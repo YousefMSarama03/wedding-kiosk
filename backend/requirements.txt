@@ -1,0 +1,13 @@
+Django>=5.0,<6
+djangorestframework>=3.14,<4
+python-dotenv>=1.0,<2
+psycopg[binary]>=3.1,<4
+Pillow>=10.0,<11
+django-cors-headers>=4.3,<5
+qrcode[pil]>=7.4,<8
+requests>=2.31,<3
+openai>=1.0,<2
+replicate>=0.25,<1
+rembg>=2.0,<3
+onnxruntime>=1.16,<2
+
