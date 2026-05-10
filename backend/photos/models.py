@@ -1,19 +1,30 @@
 from django.db import models
-from events.models import Event
+from events.models import Event, event_folder_name
 
 
 def _safe_basename(filename: str) -> str:
     return filename.split("/")[-1].split("\\")[-1]
 
 
+def _event_bucket(instance) -> str:
+    event = getattr(instance, "event", None)
+    if event is None:
+        event_id = getattr(instance, "event_id", None)
+        if event_id is not None:
+            event = Event.objects.filter(pk=event_id).only(
+                "bride_name", "groom_name", "wedding_date"
+            ).first()
+    if event is None:
+        return "event_unknown"
+    return event_folder_name(event)
+
+
 def photo_guest_upload_to(instance, filename):
-    event_id = getattr(instance, "event_id", None) or "unknown"
-    return f"events/event_{event_id}/guests/{_safe_basename(filename)}"
+    return f"events/{_event_bucket(instance)}/guests/{_safe_basename(filename)}"
 
 
 def photo_generated_upload_to(instance, filename):
-    event_id = getattr(instance, "event_id", None) or "unknown"
-    return f"events/event_{event_id}/generated/{_safe_basename(filename)}"
+    return f"events/{_event_bucket(instance)}/generated/{_safe_basename(filename)}"
 
 
 class Photo(models.Model):
@@ -32,6 +43,10 @@ class Photo(models.Model):
     guest_image = models.ImageField(upload_to=photo_guest_upload_to)
     generated_image = models.ImageField(upload_to=photo_generated_upload_to, null=True, blank=True)
     style = models.CharField(max_length=100, blank=True)
+    use_ai_generation = models.BooleanField(
+        default=True,
+        help_text="If False, guest capture is copied to generated/ (no AI).",
+    )
     captured_by = models.CharField(
         max_length=100,
         blank=True,

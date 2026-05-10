@@ -5,9 +5,9 @@ Uses DRF generic views: list/create and a custom view for AI processing.
 
 import base64
 import uuid
-from pathlib import Path
 
 from django.core.files.base import ContentFile
+from django.db import transaction
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
@@ -19,12 +19,23 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from django.conf import settings
-from events.models import Event, Bride
+from celery import chain
+from events.models import Event
 from .models import Photo
 from .serializers import PhotoSerializer
-from .services.keepsake_pipeline import run_keepsake_pipeline
-from .services.openai_pipeline import generate_wedding_with_openai
-from .services.qr_service import generate_qr_code
+from .services.photo_qr import build_photo_download_absolute_url, materialize_photo_qr
+from .tasks import materialize_photo_qr_task, process_photo_ai_task
+
+
+def _parse_use_ai_from_request(value) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    s = str(value).strip().lower()
+    if s in ("false", "0", "no", "off"):
+        return False
+    return True
 
 
 # GET /api/photos/  -> list all photos
@@ -62,7 +73,7 @@ class PhotoDetailView(generics.RetrieveDestroyAPIView):
 class PhotoCaptureView(APIView):
     """
     Create a photo from a base64-encoded image (e.g. from tablet camera / getDisplayMedia).
-    Request body: event_id, style (optional), image_base64 (with or without data URL prefix).
+    Request body: event_id, style (optional), use_ai (optional, default true), image_base64.
     Image is decoded -> ContentFile -> saved under media/guests/ as guest_image; status = pending.
     """
     authentication_classes = []
@@ -120,11 +131,14 @@ class PhotoCaptureView(APIView):
         content = ContentFile(image_bytes, name=filename)
 
         style = request.data.get("style") or ""
+        use_ai = _parse_use_ai_from_request(request.data.get("use_ai"))
+        use_ai_generation = True if use_ai is None else use_ai
 
         photo = Photo.objects.create(
             event=event,
             guest_image=content,
             style=style,
+            use_ai_generation=use_ai_generation,
             status=Photo.STATUS_PENDING,
             is_approved=True,
             is_featured=False,
@@ -138,85 +152,125 @@ class PhotoCaptureView(APIView):
 
 
 # POST /api/photos/{id}/process-ai/
-# OpenAI-based pipeline: status=processing -> OpenAI generate_wedding_with_openai() -> save to generated_image.
 @method_decorator(csrf_exempt, name="dispatch")
 class PhotoProcessAIView(APIView):
     """
-    Trigger AI processing for a photo.
+    Queue or run AI processing. With ``CELERY_BROKER_URL`` set, returns 202 quickly and runs
+    ``process_photo_ai_task`` → ``materialize_photo_qr_task`` in the background.
 
-    By default runs the keepsake pipeline (rembg → bride prep → Replicate InstantID).
-    Set ``KEEPSAKE_USE_OPENAI_LEGACY=true`` to use the legacy OpenAI DALL-E path instead
-    (``OPENAI_API_KEY`` only; guest image only).
-
-    Flow:
-    - set status=processing
-    - call pipeline → save path into generated_image
-    - set status=completed
-    If any error occurs, status is set back to pending.
+    QR and download URL do not require a finished image: GET /qr/ works immediately;
+    GET /download/ returns JSON ``{ "status": "processing" }`` until the file exists.
     """
 
     authentication_classes = []
     permission_classes = [AllowAny]
 
     def post(self, request, pk):
-        photo = get_object_or_404(Photo, pk=pk)
-        raw_include_bride = request.data.get("include_bride", True)
-        include_bride = str(raw_include_bride).strip().lower() not in {"false", "0", "no", "off"}
-
-        # Optionally update style from request payload before processing.
         style = request.data.get("style")
-        if style is not None:
-            photo.style = style
-            photo.save(update_fields=["style"])
+        use_ai_override = _parse_use_ai_from_request(request.data.get("use_ai"))
+        guest_only_finalize_after = False
+        photo_id: int | None = None
 
-        # 1. Mark as processing so the kiosk can show a loading state.
-        photo.status = Photo.STATUS_PROCESSING
-        photo.save(update_fields=["status"])
+        with transaction.atomic():
+            photo = get_object_or_404(Photo.objects.select_for_update(), pk=pk)
+            update_fields: list[str] = []
+            if style is not None:
+                photo.style = style
+                update_fields.append("style")
+            if use_ai_override is not None:
+                photo.use_ai_generation = use_ai_override
+                update_fields.append("use_ai_generation")
 
-        # 2. Optional bride image: include for "with bride", skip for "user only".
-        bride_path = None
-        if include_bride:
-            bride = Bride.objects.filter(active=True).first()
-            if bride and bride.image:
-                bride_path = bride.image.path
+            if (
+                photo.status == Photo.STATUS_COMPLETED
+                and photo.generated_image
+                and photo.generated_image.name
+            ):
+                if update_fields:
+                    photo.save(update_fields=update_fields)
+                url = request.build_absolute_uri(photo.generated_image.url)
+                return Response(
+                    {
+                        "generated_image_url": url,
+                        "status": photo.status,
+                        "guest_only": not photo.use_ai_generation,
+                        "idempotent": True,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            if photo.status == Photo.STATUS_PROCESSING and photo.use_ai_generation:
+                if update_fields:
+                    photo.save(update_fields=update_fields)
+                detail_url = request.build_absolute_uri(f"/api/photos/{photo.pk}/")
+                return Response(
+                    {
+                        "status": photo.status,
+                        "photo_id": photo.pk,
+                        "detail_url": detail_url,
+                        "message": "Already processing; poll detail_url until status is completed.",
+                    },
+                    status=status.HTTP_202_ACCEPTED,
+                )
+
+            if not photo.use_ai_generation:
+                uf = list(dict.fromkeys(update_fields))
+                if uf:
+                    photo.save(update_fields=uf)
+                photo_id = photo.pk
+                guest_only_finalize_after = True
             else:
-                event = photo.event
-                if not event.bride_image:
-                    photo.status = Photo.STATUS_PENDING
-                    photo.save(update_fields=["status"])
-                    return Response(
-                        {"error": "Active bride image not configured. Add one in Admin -> Brides or set the event's bride image."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                bride_path = event.bride_image.path
+                photo.status = Photo.STATUS_PROCESSING
+                update_fields.append("status")
+                photo.save(update_fields=update_fields)
+                photo_id = photo.pk
 
-        guest_path = photo.guest_image.path
+        if guest_only_finalize_after and photo_id is not None:
+            from .services.photo_ai_job import finalize_photo_guest_only
 
-        # 3. Generate: Replicate keepsake by default; optional OpenAI legacy.
-        style_text = (photo.style or "").strip()
+            finalize_photo_guest_only(photo_id)
+            materialize_photo_qr(photo_id, request=request)
+            photo = Photo.objects.get(pk=photo_id)
+            url = request.build_absolute_uri(photo.generated_image.url)
+            return Response(
+                {
+                    "status": photo.status,
+                    "guest_only": True,
+                    "generated_image_url": url,
+                    "image_url": url,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        use_celery = bool(getattr(settings, "CELERY_BROKER_URL", "").strip())
+
+        if use_celery:
+            chain(
+                process_photo_ai_task.s(photo_id),
+                materialize_photo_qr_task.s(),
+            ).delay()
+            photo.refresh_from_db()
+            if photo.status == Photo.STATUS_COMPLETED and photo.generated_image:
+                url = request.build_absolute_uri(photo.generated_image.url)
+                return Response(
+                    {"generated_image_url": url, "status": photo.status},
+                    status=status.HTTP_200_OK,
+                )
+            detail_url = request.build_absolute_uri(f"/api/photos/{photo_id}/")
+            return Response(
+                {
+                    "status": photo.status,
+                    "photo_id": photo_id,
+                    "detail_url": detail_url,
+                    "message": "Processing started; poll detail_url until status is completed.",
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+
         try:
-            if getattr(settings, "KEEPSAKE_USE_OPENAI_LEGACY", False):
-                relative_path = generate_wedding_with_openai(
-                    guest_path,
-                    bride_path,
-                    style_text,
-                    event_id=photo.event_id,
-                    event_type=getattr(photo.event, "event_type", "wedding"),
-                    include_bride=include_bride,
-                )
-            else:
-                ks = run_keepsake_pipeline(
-                    Path(guest_path),
-                    Path(bride_path) if bride_path else None,
-                    event_id=photo.event_id,
-                    event_type=getattr(photo.event, "event_type", "wedding"),
-                    refine_prompt=style_text or None,
-                    include_bride=include_bride,
-                )
-                relative_path = ks.final_relative_path
+            execute_sync_ai_and_qr(photo_id)
         except Exception as e:
-            photo.status = Photo.STATUS_PENDING
-            photo.save(update_fields=["status"])
+            Photo.objects.filter(pk=photo_id).update(status=Photo.STATUS_PENDING)
             msg = str(e)
             status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
             if "not configured" in msg or "not found" in msg:
@@ -226,89 +280,92 @@ class PhotoProcessAIView(APIView):
                 status=status_code,
             )
 
-        # 4. Save the generated image path into the model and mark completed.
-        photo.generated_image = relative_path
-        photo.status = Photo.STATUS_COMPLETED
-        photo.save(update_fields=["generated_image", "status"])
-
-        # 5. Return the URL so the client can show or download the image.
+        photo.refresh_from_db()
         url = request.build_absolute_uri(photo.generated_image.url)
         return Response({"generated_image_url": url, "status": photo.status})
+
+
+def execute_sync_ai_and_qr(photo_id: int) -> None:
+    """Run AI pipeline or guest-only copy, then write QR."""
+    from .services.photo_ai_job import execute_photo_ai_processing, finalize_photo_guest_only
+
+    photo = Photo.objects.get(pk=photo_id)
+    if not photo.use_ai_generation:
+        finalize_photo_guest_only(photo_id)
+    else:
+        execute_photo_ai_processing(photo_id)
+    materialize_photo_qr(photo_id, request=None)
 
 
 # --- QR code & download flow: guest gets QR -> scans -> hits download URL -> gets image ---
 
 # GET /api/photos/{id}/qr/
-# Returns QR code image URL and download URL. Only for photos that have generated_image.
 class PhotoQRCodeView(APIView):
     """
-    Generate a QR code that points to the photo download URL.
-    Flow: photo must have generated_image -> build download URL -> generate QR -> return both URLs.
-    Kiosk can display the QR; guest scans it and is taken to the download endpoint.
+    Return QR for the stable download URL. Does not require ``generated_image``;
+    the guest may scan before AI finishes.
     """
 
     def get(self, request, pk):
         photo = get_object_or_404(Photo, pk=pk)
-        if not photo.generated_image:
-            return Response(
-                {"error": "Photo has no generated image yet. Run process-ai first."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Build the full URL for the QR so phones on the same network can reach the backend.
-        download_path = f"/api/photos/{pk}/download/"
-        if getattr(settings, "PUBLIC_HOST", None):
-            scheme = getattr(settings, "PUBLIC_SCHEME", "http")
-            port = getattr(settings, "PUBLIC_PORT", "8000")
-            port_suffix = f":{port}" if port and port not in ("80", "443") else ""
-            download_url_absolute = f"{scheme}://{settings.PUBLIC_HOST}{port_suffix}{download_path}"
-        else:
-            download_url_absolute = request.build_absolute_uri(download_path)
-
-        # Save QR under media/qrcodes/photo_{id}.png and get relative path.
-        relative_path = generate_qr_code(
-            download_url_absolute,
-            filename=f"photo_{pk}.png",
-            subdir=f"events/event_{photo.event_id}/qrcodes",
-        )
-
-        # Frontend uses download_url for "Or tap here" so it works on phones (full URL).
+        download_url_absolute = build_photo_download_absolute_url(pk, request=request)
+        relative_path = materialize_photo_qr(pk, request=request)
         qr_code_url = f"/media/{relative_path}"
         return Response({
             "qr_code_url": qr_code_url,
             "download_url": download_url_absolute,
+            "photo_status": photo.status,
+            "guest_only": not photo.use_ai_generation,
         })
 
 
 # GET /api/photos/{id}/download/
-# Serves the generated image file so guests can download it (e.g. after scanning QR).
 class PhotoDownloadView(APIView):
     """
-    Serve the generated photo as a downloadable file.
-    Used when the guest opens the download URL (from QR or direct link).
+    Serve the generated file when ready; otherwise JSON ``status: processing`` (HTTP 200).
     """
 
     def get(self, request, pk):
         photo = get_object_or_404(Photo, pk=pk)
-        if not photo.generated_image:
-            return Response(
-                {"error": "No generated image available for this photo."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+        has_file = bool(photo.generated_image and photo.generated_image.name)
+        if photo.status == Photo.STATUS_COMPLETED and has_file:
+            file_handle = photo.generated_image.open("rb")
+            filename = photo.generated_image.name.split("/")[-1] or "wedding_photo.png"
+            ext = filename.lower().rsplit(".", 1)[-1]
+            if ext == "png":
+                content_type = "image/png"
+            elif ext in ("jpg", "jpeg"):
+                content_type = "image/jpeg"
+            else:
+                content_type = "image/png"
+            response = FileResponse(file_handle, content_type=content_type)
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            return response
 
-        file_handle = photo.generated_image.open("rb")
-        filename = photo.generated_image.name.split("/")[-1] or "wedding_photo.png"
+        if (
+            photo.status == Photo.STATUS_COMPLETED
+            and not photo.use_ai_generation
+            and photo.guest_image
+            and photo.guest_image.name
+        ):
+            file_handle = photo.guest_image.open("rb")
+            filename = photo.guest_image.name.split("/")[-1] or "photo.jpg"
+            ext = filename.lower().rsplit(".", 1)[-1]
+            if ext in ("jpg", "jpeg"):
+                content_type = "image/jpeg"
+            elif ext == "png":
+                content_type = "image/png"
+            else:
+                content_type = "image/jpeg"
+            response = FileResponse(file_handle, content_type=content_type)
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            return response
 
-        # Pick a content type based on the file extension so that phones/browsers
-        # interpret and display the downloaded image correctly.
-        ext = filename.lower().rsplit(".", 1)[-1]
-        if ext == "png":
-            content_type = "image/png"
-        elif ext in ("jpg", "jpeg"):
-            content_type = "image/jpeg"
-        else:
-            content_type = "image/png"
-
-        response = FileResponse(file_handle, content_type=content_type)
-        response["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return response
+        return Response(
+            {
+                "status": "processing",
+                "photo_status": photo.status,
+                "message": "Your photo is still being generated. Try again in a moment.",
+            },
+            status=status.HTTP_200_OK,
+        )

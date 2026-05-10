@@ -33,9 +33,12 @@ Transform this into a single, photorealistic professional wedding photograph.
 Unify lighting, shadows, color temperature, and exposure across the entire frame so the
 bride and the other person clearly belong in the same scene and moment.
 Add subtle, physically plausible contact shadows and ambient light that match the venue.
+Gently increase overall brightness/exposure and lift shadows so faces and background details
+are clear and well-lit, while keeping natural contrast (avoid harsh HDR/glow).
 Refine edge blending and skin tone consistency without altering anyone's identity.
 Keep every face exactly as in the source: same facial features, expressions, age, and
 skin texture — do not beautify, slim, or replace faces.
+Avoid “AI-generated” artifacts: no plastic/waxy skin, no over-sharpening, no unnatural halos.
 High detail, natural skin, realistic fabric and background, editorial wedding quality.
 """.strip()
 

@@ -11,7 +11,6 @@ import { motion } from "framer-motion";
 import LoginPage from "../../components/kiosk/LoginPage";
 import WelcomeScreen from "../../components/kiosk/WelcomeScreen";
 import CameraCapture from "../../components/kiosk/CameraCapture";
-import BrandLogo from "../../components/ui/BrandLogo";
 import { createLogger, loggedFetch } from "../../services/logger";
 import { usePerformanceLog } from "../../hooks/usePerformanceLog";
 
@@ -26,6 +25,12 @@ const SCREENS = {
   PROCESSING: "processing",
   QR: "qr",
 };
+
+const KIOSK_STYLE_OPTIONS = [
+  { id: "cinematic-cool", title: "Cinematic Cool", featured: true },
+  { id: "cinematic", title: "Cinematic", featured: false },
+  { id: "classic", title: "Classic", featured: false },
+];
 
 /* Shared layout for placeholder screens: dark bg, card slide-up, minimal content */
 function PlaceholderScreen({ title, subtitle, onNext, onBack, nextLabel = "Next" }) {
@@ -44,9 +49,6 @@ function PlaceholderScreen({ title, subtitle, onNext, onBack, nextLabel = "Next"
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
       >
-        <div className="mb-4 flex justify-center">
-          <BrandLogo className="h-16" alt="Jerusalem Studio" />
-        </div>
         <h1 className="text-2xl md:text-3xl font-semibold text-white tracking-tight mb-2">
           {title}
         </h1>
@@ -87,8 +89,8 @@ function PlaceholderScreen({ title, subtitle, onNext, onBack, nextLabel = "Next"
 export default function KioskApp() {
   const [screen, setScreen] = useState(SCREENS.LOGIN);
   const [capturedImage, setCapturedImage] = useState(null); // data URL for preview & upload later
-  const [selectedStyle, setSelectedStyle] = useState("cinematic");
-  const [includeBride, setIncludeBride] = useState(true);
+  const [selectedStyle, setSelectedStyle] = useState("cinematic-cool");
+  const [useAiGeneration, setUseAiGeneration] = useState(true);
   const [eventId, setEventId] = useState(""); // chosen wedding event (id)
   const [photoId, setPhotoId] = useState(null);
   const [processing, setProcessing] = useState(false);
@@ -183,9 +185,6 @@ export default function KioskApp() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
         >
-          <div className="flex justify-center">
-            <BrandLogo className="h-14" alt="Jerusalem Studio" />
-          </div>
           <h1 className="text-lg sm:text-2xl font-semibold text-white tracking-tight">
             Preview
           </h1>
@@ -217,7 +216,7 @@ export default function KioskApp() {
             <motion.button
               type="button"
               onClick={() => setScreen(SCREENS.STYLE)}
-              className="min-h-[52px] md:min-h-[56px] px-8 rounded-xl bg:white bg-white text-black font-semibold focus:outline-none focus:ring-2 focus:ring-white/50 focus:ring-offset-2 focus:ring-offset-[#141414]"
+              className="min-h-[52px] md:min-h-[56px] px-8 rounded-xl bg-white text-black font-semibold focus:outline-none focus:ring-2 focus:ring-white/50 focus:ring-offset-2 focus:ring-offset-[#141414]"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               transition={{ type: "spring", stiffness: 400, damping: 17 }}
@@ -246,14 +245,11 @@ export default function KioskApp() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
         >
-          <div className="flex justify-center">
-            <BrandLogo className="h-14" alt="Jerusalem Studio" />
-          </div>
           <h1 className="text-lg sm:text-2xl font-semibold text-white tracking-tight">
-            Style Selection
+            Style and options
           </h1>
           <p className="text-white/60 text-sm sm:text-base">
-            Choose a style, decide whether to include the bride, and confirm which event this photo belongs to.
+            Choose your event, whether to use AI, and a style (if using AI).
           </p>
 
           {/* Event picker (loaded from backend), with manual ID fallback on error */}
@@ -319,13 +315,6 @@ export default function KioskApp() {
                 </p>
               );
             }
-            if (includeBride && !selectedEvent.bride_image) {
-              bits.push(
-                <p key="bride" className="text-sm text-amber-400 bg-amber-400/10 rounded-lg px-3 py-2">
-                  This event has no bride photo. Add one in the admin or select "User Only".
-                </p>
-              );
-            }
             if (!atLimit && hasCap) {
               bits.push(
                 <p key="count" className="text-xs text-white/50">
@@ -338,52 +327,66 @@ export default function KioskApp() {
           })()}
 
           <div className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-white/70">Style</span>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {["cinematic", "classic", "black-and-white"].map((style) => (
-                <button
-                  key={style}
-                  type="button"
-                  onClick={() => setSelectedStyle(style)}
-                  className={`h-10 rounded-lg border text-sm capitalize ${
-                    selectedStyle === style
-                      ? "bg-white text-black border-white"
-                      : "bg-white/5 text-white border-white/20"
-                  }`}
-                >
-                  {style.replace("-", " ")}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-white/70">Final Image</span>
+            <span className="text-sm font-medium text-white/70">Photo output</span>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => setIncludeBride(true)}
-                className={`h-10 rounded-lg border text-sm ${
-                  includeBride
-                    ? "bg-white text-black border-white"
-                    : "bg-white/5 text-white border-white/20"
+                onClick={() => setUseAiGeneration(true)}
+                className={`rounded-xl border px-4 py-3 text-left text-sm font-semibold transition-colors ${
+                  useAiGeneration
+                    ? "bg-white text-black border-white ring-2 ring-amber-400/80 ring-offset-2 ring-offset-[#141414]"
+                    : "bg-white/5 text-white border-white/20 hover:border-white/35"
                 }`}
               >
-                With Bride
+                With AI
+                <span className={`mt-1 block text-xs font-normal ${useAiGeneration ? "text-black/75" : "text-white/60"}`}>
+                  Stylized keepsake (takes longer).
+                </span>
               </button>
               <button
                 type="button"
-                onClick={() => setIncludeBride(false)}
-                className={`h-10 rounded-lg border text-sm ${
-                  !includeBride
-                    ? "bg-white text-black border-white"
-                    : "bg-white/5 text-white border-white/20"
+                onClick={() => setUseAiGeneration(false)}
+                className={`rounded-xl border px-4 py-3 text-left text-sm font-semibold transition-colors ${
+                  !useAiGeneration
+                    ? "bg-white text-black border-white ring-2 ring-emerald-400/80 ring-offset-2 ring-offset-[#141414]"
+                    : "bg-white/5 text-white border-white/20 hover:border-white/35"
                 }`}
               >
-                User Only
+                Without AI
+                <span className={`mt-1 block text-xs font-normal ${!useAiGeneration ? "text-black/75" : "text-white/60"}`}>
+                  Original photo only — saved to the same generated folder, no AI.
+                </span>
               </button>
             </div>
           </div>
+
+          {useAiGeneration ? (
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-medium text-white/70">Style</span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {KIOSK_STYLE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setSelectedStyle(opt.id)}
+                    className={`rounded-lg border text-sm font-medium ${
+                      opt.featured ? "sm:col-span-3 py-2.5" : "h-10"
+                    } ${
+                      selectedStyle === opt.id
+                        ? "bg-white text-black border-white"
+                        : "bg-white/5 text-white border-white/20"
+                    }`}
+                  >
+                    {opt.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-white/50 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+              Your capture will be copied into the event generated folder — same place as AI results.
+            </p>
+          )}
 
           {flowError ? <p className="text-sm text-red-400">{flowError}</p> : null}
 
@@ -429,7 +432,7 @@ export default function KioskApp() {
                 try {
                   setProcessing(true);
                   setProcessingMessage("");
-                  log.info("Photo creation started", { eventId, style: selectedStyle, includeBride });
+                  log.info("Photo creation started", { eventId, style: selectedStyle, useAi: useAiGeneration });
                   // 1) Upload captured image to backend (capture endpoint).
                   const captureRes = await loggedFetch(
                     "/api/photos/capture/",
@@ -438,7 +441,8 @@ export default function KioskApp() {
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({
                         event_id: Number(eventId),
-                        style: selectedStyle,
+                        style: useAiGeneration ? selectedStyle : "",
+                        use_ai: useAiGeneration,
                         image_base64: capturedImage,
                       }),
                     },
@@ -466,16 +470,20 @@ export default function KioskApp() {
                   const newPhotoId = captureData.photo_id;
                   setPhotoId(newPhotoId);
                   log.info("Capture OK", { photoId: newPhotoId });
-                  setProcessingMessage("Creating your wedding photo… This usually takes a few seconds.");
-                  setScreen(SCREENS.PROCESSING);
+                  setProcessingMessage(
+                    useAiGeneration ? "Starting your photo…" : "Saving your photo…"
+                  );
 
-                  // 2) Trigger AI processing for that photo.
+                  // 2) AI pipeline or guest-only copy to generated/ (returns quickly when Celery is enabled).
                   const processRes = await loggedFetch(
                     `/api/photos/${newPhotoId}/process-ai/`,
                     {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ style: selectedStyle, include_bride: includeBride }),
+                      body: JSON.stringify({
+                        style: useAiGeneration ? selectedStyle : "",
+                        use_ai: useAiGeneration,
+                      }),
                     },
                     { component: "KioskApp", label: `POST /api/photos/${newPhotoId}/process-ai/` }
                   );
@@ -501,9 +509,9 @@ export default function KioskApp() {
                     setProcessing(false);
                     return;
                   }
-                  log.info("process-ai OK", { photoId: newPhotoId });
+                  log.info("process-ai OK", { photoId: newPhotoId, status: processRes.status });
 
-                  // 3) Fetch QR code for the processed photo.
+                  // 3) QR uses the fixed download URL — no need to wait for AI.
                   const qrRes = await loggedFetch(
                     `/api/photos/${newPhotoId}/qr/`,
                     { method: "GET" },
@@ -521,6 +529,7 @@ export default function KioskApp() {
                   }
                   setProcessing(false);
                   setScreen(SCREENS.QR);
+                  setProcessingMessage("");
                 } catch (err) {
                   log.error("Photo creation flow error", { error: err?.message });
                   setFlowError("Something went wrong while creating your photo. Please try again.");
@@ -567,12 +576,13 @@ export default function KioskApp() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
         >
-          <BrandLogo className="h-14" alt="Jerusalem Studio" />
           <h1 className="text-lg sm:text-2xl font-semibold text-white tracking-tight">
-            Your Photo is Ready
+            Scan to download
           </h1>
           <p className="text-white/60 text-sm sm:text-base">
-            Scan the QR code below to download your photo on your device. If something went wrong, please ask a staff member for help.
+            {qrData?.guest_only
+              ? "Scan the QR code to download your photo (original, no AI)."
+              : "Scan the QR code to open your personal download link. If the image is still generating, wait a few seconds and open the link again (or refresh). Ask a staff member if you need help."}
           </p>
           {qrData?.qr_code_url ? (
             <img
@@ -597,8 +607,8 @@ export default function KioskApp() {
             type="button"
             onClick={() => {
               setCapturedImage(null);
-              setSelectedStyle("cinematic");
-              setIncludeBride(true);
+              setSelectedStyle("cinematic-cool");
+              setUseAiGeneration(true);
               setPhotoId(null);
               setQrData(null);
               setFlowError("");

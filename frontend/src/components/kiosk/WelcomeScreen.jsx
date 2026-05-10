@@ -7,7 +7,6 @@
  */
 
 import { motion } from "framer-motion";
-import BrandLogo from "../ui/BrandLogo";
 
 export default function WelcomeScreen({ onStart }) {
   return (
@@ -25,9 +24,6 @@ export default function WelcomeScreen({ onStart }) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
       >
-        <div className="mb-4 flex justify-center">
-          <BrandLogo className="h-16" alt="Jerusalem Studio" />
-        </div>
         <h1 className="text-2xl md:text-3xl font-semibold text-white tracking-tight mb-2">
           Welcome
         </h1>

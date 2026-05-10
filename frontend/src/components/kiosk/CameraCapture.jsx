@@ -8,7 +8,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import BrandLogo from "../ui/BrandLogo";
 
 const TIMER_STORAGE_KEY = "kioskCaptureTimerSec";
 
@@ -194,10 +193,7 @@ export default function CameraCapture({ onCapture, onBack }) {
           background: "linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 70%, transparent 100%)",
         }}
       >
-        <div className="flex items-center gap-3">
-          <BrandLogo className="h-9" alt="Jerusalem Studio" />
-          <h1 className="text-lg font-semibold tracking-tight text-white sm:text-xl">Take a photo</h1>
-        </div>
+        <h1 className="text-lg font-semibold tracking-tight text-white sm:text-xl">Take a photo</h1>
         {onBack && (
           <button
             type="button"

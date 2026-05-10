@@ -8,7 +8,6 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import BrandLogo from "../ui/BrandLogo";
 
 const KIOSK_SKIP_AUTH = import.meta.env.VITE_KIOSK_SKIP_AUTH === "true";
 
@@ -73,12 +72,9 @@ export default function LoginPage({ onLogin }) {
         transition={{ duration: 0.5, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
       >
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-          <div className="flex flex-col items-center gap-3">
-            <BrandLogo className="h-16" alt="Jerusalem Studio" />
-            <h1 className="text-center text-2xl md:text-3xl font-semibold text-white tracking-tight">
-              AI Wedding Kiosk
-            </h1>
-          </div>
+          <h1 className="text-center text-2xl md:text-3xl font-semibold text-white tracking-tight">
+            AI Wedding Kiosk
+          </h1>
           <div className="flex flex-col gap-2">
             <label htmlFor="username" className="text-sm font-medium text-white/70">
               Username

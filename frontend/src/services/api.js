@@ -146,12 +146,37 @@ export async function deletePhoto(id) {
 
 /** Long-running AI (rembg + merge + WaveSpeed/OpenAI); must exceed nginx proxy_read_timeout. */
 const PROCESS_AI_TIMEOUT_MS = 300000;
+const POLL_AI_INTERVAL_MS = 1500;
+
+export async function getPhoto(id) {
+  const res = await api.get(`/api/photos/${id}/`);
+  return res.data;
+}
+
+/** When process-ai returns 202 (Celery), poll until the photo is completed or reset to pending. */
+export async function waitForPhotoProcessed(photoId, options = {}) {
+  const intervalMs = options.intervalMs ?? POLL_AI_INTERVAL_MS;
+  const maxWaitMs = options.maxWaitMs ?? PROCESS_AI_TIMEOUT_MS;
+  const start = performance.now();
+  while (performance.now() - start < maxWaitMs) {
+    const data = await getPhoto(photoId);
+    if (data.status === "completed" && data.generated_image) return data;
+    if (data.status === "pending") {
+      throw new Error("AI processing failed or was reset.");
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error("Timed out waiting for AI processing.");
+}
 
 export async function reprocessPhoto(id) {
   apiLogger.info("reprocessPhoto (process-ai) start", { photoId: id });
   const start = performance.now();
   try {
-    await api.post(`/api/photos/${id}/process-ai/`, {}, { timeout: PROCESS_AI_TIMEOUT_MS });
+    const res = await api.post(`/api/photos/${id}/process-ai/`, {}, { timeout: 120000 });
+    if (res.status === 202) {
+      await waitForPhotoProcessed(id, { maxWaitMs: PROCESS_AI_TIMEOUT_MS });
+    }
     apiLogger.info("reprocessPhoto OK", { photoId: id, durationMs: Math.round(performance.now() - start) });
   } catch (err) {
     apiLogger.error("reprocessPhoto failed", { photoId: id, durationMs: Math.round(performance.now() - start), error: err?.message });

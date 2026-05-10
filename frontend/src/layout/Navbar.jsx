@@ -1,6 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { logoutAdmin } from "../services/api";
-import BrandLogo from "../components/ui/BrandLogo";
 
 const titles = {
   "/admin": "Overview",
@@ -38,7 +37,6 @@ export default function Navbar({ onMenuClick }) {
             <path strokeLinecap="round" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <BrandLogo className="h-10 shrink-0" alt="Jerusalem Studio" />
         <h1 className="min-w-0 truncate font-display text-lg font-medium tracking-editorial text-white">
           {title}
         </h1>

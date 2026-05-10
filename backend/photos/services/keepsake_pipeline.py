@@ -1,7 +1,7 @@
 """
-End-to-end keepsake pipeline: guest cutout → bride prep → Replicate InstantID → saved file.
+End-to-end keepsake pipeline: guest cutout → Replicate (GPT Image 2 by default) → saved file.
 
-No PIL merge of guest onto bride; the model generates the final scene from references.
+Guest-only scene generation from references (no bride/couple composition).
 """
 
 from __future__ import annotations
@@ -16,6 +16,9 @@ from pathlib import Path
 from typing import Union
 
 from django.conf import settings
+from events.models import Event
+from events.models import event_folder_name
+from events.welcome_sign import welcome_sign_extra_prompt
 from PIL import Image
 
 from .background_removal import remove_background_to_png
@@ -47,36 +50,6 @@ def _media_root() -> Path:
     return Path(getattr(settings, "MEDIA_ROOT", "media"))
 
 
-def _prepare_bride_image(
-    bride_path: Path,
-    max_long_edge: int,
-    out_path: Path,
-) -> None:
-    """
-    Load bride photo, optionally downscale, save as PNG for Replicate pose/reference input.
-    """
-    if max_long_edge < 1:
-        raise ValueError("bride_max_long_edge must be >= 1")
-
-    with Image.open(bride_path) as im:
-        im.load()
-        if im.mode == "RGBA":
-            bg = Image.new("RGB", im.size, (255, 255, 255))
-            bg.paste(im, mask=im.split()[3])
-            rgb = bg
-        else:
-            rgb = im.convert("RGB")
-        w, h = rgb.size
-        m = max(w, h)
-        if m > max_long_edge:
-            scale = max_long_edge / m
-            nw = max(1, int(round(w * scale)))
-            nh = max(1, int(round(h * scale)))
-            rgb = rgb.resize((nw, nh), Image.Resampling.LANCZOS)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        rgb.save(out_path, format="PNG", optimize=True)
-
-
 def _flatten_rgba_to_rgb_png(rgba_path: Path) -> bytes:
     with Image.open(rgba_path) as im:
         im.load()
@@ -90,57 +63,48 @@ def _flatten_rgba_to_rgb_png(rgba_path: Path) -> bytes:
 
 def run_keepsake_pipeline(
     guest_image_path: PathLike,
-    bride_image_path: PathLike | None,
     *,
     event_id: int | None = None,
+    event_bucket: str | None = None,
     event_type: str | None = None,
-    merge_position: tuple[int, int] = (100, 120),
-    max_guest_size: tuple[int, int] | None = (900, 1200),
-    bride_max_long_edge: int = 2048,
     rembg_model: str = "u2net",
     rembg_alpha_matting: bool = False,
     skip_refinement: bool = False,
     refine_prompt: str | None = None,
     refinement_model: str | None = None,
     save_merged_intermediate: bool = False,
-    include_bride: bool = True,
 ) -> KeepsakePipelineResult:
     """
     Pipeline:
 
     1. Remove background from the guest image (rembg).
-    2. Prepare bride image (downscale if needed) as reference for Replicate.
-    3. Unless ``skip_refinement``: call Replicate InstantID to generate the wedding photo.
+    2. Unless ``skip_refinement``: call Replicate (default ``openai/gpt-image-2``) to generate the scene.
        If ``skip_refinement``: save guest cutout flattened on white (no API call).
-    4. Save final image under ``MEDIA_ROOT/generated/`` as PNG.
-
-    Parameters ``merge_position``, ``max_guest_size``, and ``refinement_model`` are kept for
-    backward compatibility and are ignored.
+    3. Save final image under ``MEDIA_ROOT/generated/`` as PNG.
 
     Environment
     -----------
     ``REPLICATE_API_TOKEN`` (required unless ``skip_refinement`` is True).
-    Optional: ``REPLICATE_INSTANTID_MODEL``, ``REPLICATE_GUIDANCE_SCALE``, ``REPLICATE_SDXL_WEIGHTS``,
-    ``REPLICATE_NEGATIVE_PROMPT``.
+    Model: ``REPLICATE_MODEL`` (defaults to ``openai/gpt-image-2``), or legacy ``REPLICATE_INSTANTID_MODEL``
+    for InstantID (``zsxkib/instant-id:…``).
+    InstantID-only: ``REPLICATE_GUIDANCE_SCALE``, ``REPLICATE_SDXL_WEIGHTS``, ``REPLICATE_NEGATIVE_PROMPT``.
+    FLUX-only: ``REPLICATE_FLUX_RESOLUTION``, ``REPLICATE_FLUX_ASPECT_RATIO``, ``REPLICATE_FLUX_OUTPUT_FORMAT``,
+    ``REPLICATE_FLUX_OUTPUT_QUALITY``, ``REPLICATE_FLUX_SAFETY_TOLERANCE``, ``REPLICATE_FLUX_PROMPT_UPSAMPLING``,
+    ``REPLICATE_FLUX_SEED`` (optional).
+    GPT Image 2-only: ``REPLICATE_GPT_IMAGE_ASPECT_RATIO``, ``REPLICATE_GPT_IMAGE_QUALITY``,
+    ``REPLICATE_GPT_IMAGE_NUMBER_OF_IMAGES``, ``REPLICATE_GPT_IMAGE_OUTPUT_FORMAT``,
+    ``REPLICATE_GPT_IMAGE_BACKGROUND``, ``REPLICATE_GPT_IMAGE_MODERATION``,
+    ``REPLICATE_GPT_IMAGE_MAX_INPUT_LONG_EDGE`` (optional downscale; 0 = off).
+
+    Welcome sign in generated scene: ``KEEPSAKE_WELCOME_SIGN`` (true/false); uses event names,
+    date, and type via ``events.welcome_sign``.
     """
-    if merge_position != (100, 120) or max_guest_size != (900, 1200) or refinement_model:
-        logger.debug(
-            "Keepsake: legacy merge/refinement kwargs ignored (merge_position=%s, max_guest_size=%s, refinement_model=%s)",
-            merge_position,
-            max_guest_size,
-            refinement_model,
-        )
+    if refinement_model:
+        logger.debug("Keepsake: legacy refinement_model ignored (%s)", refinement_model)
 
     guest_path = Path(guest_image_path).expanduser().resolve()
     if not guest_path.is_file():
         raise FileNotFoundError(f"Guest image not found: {guest_path}")
-    bride_path: Path | None = None
-    if include_bride:
-        if not bride_image_path:
-            raise FileNotFoundError("Bride image not found: no bride image path was provided.")
-        bride_path = Path(bride_image_path).expanduser().resolve()
-        if not bride_path.is_file():
-            raise FileNotFoundError(f"Bride image not found: {bride_path}")
 
     def _temp_png(suffix: str) -> Path:
         fd, path = tempfile.mkstemp(suffix=suffix, prefix="keepsake_")
@@ -148,12 +112,15 @@ def run_keepsake_pipeline(
         return Path(path)
 
     tmp_guest = _temp_png("_guest_nobg.png")
-    tmp_bride = _temp_png("_bride_prep.png") if include_bride else None
     temp_paths = [tmp_guest]
-    if tmp_bride:
-        temp_paths.append(tmp_bride)
 
     try:
+        event_obj: Event | None = None
+        if event_id is not None:
+            event_obj = Event.objects.filter(pk=event_id).only(
+                "bride_name", "groom_name", "wedding_date", "event_type"
+            ).first()
+
         remove_background_to_png(
             guest_path,
             output_path=tmp_guest,
@@ -162,12 +129,11 @@ def run_keepsake_pipeline(
         )
         logger.info("Keepsake: guest background removed -> %s", tmp_guest)
 
-        if include_bride:
-            _prepare_bride_image(bride_path, bride_max_long_edge, tmp_bride)
-            logger.info("Keepsake: bride prepared -> %s", tmp_bride)
-
         media = _media_root()
-        event_bucket = f"event_{event_id}" if event_id is not None else "event_unknown"
+        if not event_bucket and event_obj is not None:
+            event_bucket = event_folder_name(event_obj)
+        if not event_bucket:
+            event_bucket = "event_unknown"
         generated = media / "events" / event_bucket / "generated"
         generated.mkdir(parents=True, exist_ok=True)
 
@@ -193,12 +159,14 @@ def run_keepsake_pipeline(
                 merged_relative_path=merged_rel,
             )
 
+        sign_extra = welcome_sign_extra_prompt(event_obj)
+        prompt_bits = [p for p in (refine_prompt, sign_extra) if p and str(p).strip()]
+        combined_refine = "\n\n".join(prompt_bits) if prompt_bits else None
+
         raw_bytes = generate_wedding_image_with_replicate(
             str(tmp_guest),
-            str(tmp_bride) if tmp_bride else None,
             event_type=event_type,
-            extra_prompt=refine_prompt,
-            include_bride=include_bride,
+            extra_prompt=combined_refine,
         )
         with Image.open(BytesIO(raw_bytes)) as out_im:
             out_im.load()

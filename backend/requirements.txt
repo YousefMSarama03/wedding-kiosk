@@ -10,4 +10,5 @@ openai>=1.0,<2
 replicate>=0.25,<1
 rembg>=2.0,<3
 onnxruntime>=1.16,<2
+celery[redis]>=5.3,<6
 

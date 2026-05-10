@@ -1,8 +1,7 @@
 """
-OpenAI-based wedding keepsake photo generation.
+OpenAI-based wedding keepsake photo generation (legacy DALL-E path).
 
-Uses two photos: guest (kiosk capture) and bride (wedding photo).
-Places the guest next to the bride as a professional wedding keepsake.
+Guest-only: one input image + prompt (no bride/couple composition).
 """
 
 import base64
@@ -12,9 +11,12 @@ import uuid
 from io import BytesIO
 
 from django.conf import settings
+from events.models import Event
+from events.models import event_folder_name
+from events.welcome_sign import welcome_sign_extra_prompt
 from openai import OpenAI
 
-# Lazy client so Django settings are loaded (OPENAI_API_KEY may come from .env via settings)
+
 def _client():
     api_key = os.getenv("OPENAI_API_KEY") or getattr(settings, "OPENAI_API_KEY", "")
     if not api_key:
@@ -24,46 +26,35 @@ def _client():
     return OpenAI(api_key=api_key)
 
 
-EVENT_PROMPT_SINGLE = {
+EVENT_PROMPTS = {
     "wedding": """
-Place this person in a realistic wedding photo next to a bride on a wedding stage.
-Keep their face and clothing unchanged.
-Make it look like a professional wedding photograph.
+Create a professional, photorealistic wedding portrait of this person alone at an elegant wedding venue.
+Preserve this person’s identity and outfit exactly as provided.
+Do not include additional people; keep the background as a tasteful wedding venue/stage.
+Exposure/lighting: brighten the overall scene so the subject and venue are clear; soft venue lighting with realistic shadows (no harsh HDR glow).
+Color: consistent white balance; natural skin tones.
+Finish: looks like a real camera photo (no “AI” artifacts, no plastic/waxy skin, no over-sharpening).
+Editorial wedding photography look: shallow depth of field, sharp focus on face.
 """.strip(),
     "palestinian_henna": """
-Place this person in a realistic Palestinian henna celebration portrait.
-Keep their face and clothing unchanged.
-Include tasteful and culturally respectful Palestinian henna party atmosphere and details.
-Make it look like a professional event photograph.
+Create a professional, photorealistic Palestinian henna celebration portrait of this person alone.
+Preserve this person’s identity and outfit exactly as provided.
+Do not include additional people; keep the scene focused on the subject.
+Add culturally respectful festive details and warm celebration ambiance.
+Exposure/lighting: brighten the overall scene so the subject and decor are clear; soft warm lighting with realistic shadows (no harsh HDR glow).
+Color: consistent white balance; natural skin tones.
+Finish: looks like a real camera photo (no “AI” artifacts, no plastic/waxy skin, no over-sharpening).
+Professional event photography look: shallow depth of field, sharp focus on face.
 """.strip(),
     "graduation": """
-Place this person in a realistic graduation celebration portrait.
-Keep their face and clothing unchanged.
-Include tasteful graduation context and visual details.
-Make it look like a professional event photograph.
-""".strip(),
-}
-
-EVENT_PROMPT_SOLO = {
-    "wedding": """
-Place this person in a realistic wedding portrait at an elegant wedding venue.
-Keep their face and clothing unchanged.
-Do not include a bride or groom in the final image.
-Make it look like a professional wedding photograph.
-""".strip(),
-    "palestinian_henna": """
-Place this person in a realistic Palestinian henna celebration portrait.
-Keep their face and clothing unchanged.
-Do not include additional people in the final image.
-Include tasteful and culturally respectful Palestinian henna party atmosphere and details.
-Make it look like a professional event photograph.
-""".strip(),
-    "graduation": """
-Place this person in a realistic graduation portrait.
-Keep their face and clothing unchanged.
-Do not include additional people in the final image.
-Include tasteful graduation context and visual details.
-Make it look like a professional event photograph.
+Create a professional, photorealistic graduation portrait of this person alone.
+Preserve this person’s identity and outfit exactly as provided.
+Do not include additional people; keep the scene focused on the subject.
+Include tasteful graduation context (academic venue cues, celebratory styling) with clean composition.
+Exposure/lighting: brighten the overall scene so the subject and background are clear; balanced exposure; soft realistic shadows.
+Color: consistent white balance; natural skin tones.
+Finish: looks like a real camera photo (no “AI” artifacts, no plastic/waxy skin, no over-sharpening).
+Professional event photography look: shallow depth of field, sharp focus on face.
 """.strip(),
 }
 
@@ -89,15 +80,14 @@ def _ensure_png_square(file_path, size=1024):
 
 def generate_wedding_photo(
     guest_image_path,
-    bride_image_path,
     *,
     event_type="wedding",
     event_id=None,
-    include_bride=True,
+    event_bucket=None,
+    style_fragment: str = "",
 ):
     """
-    Generate a wedding keepsake by placing the guest in a wedding scene.
-    Uses DALL-E 2 edit: one image (guest) + prompt. Bride image path is kept for API compatibility.
+    Generate a keepsake using DALL-E 2 edit: one image (guest) + prompt.
 
     API requirements (from OpenAI docs and community):
     - Edit endpoint often only accepts model="dall-e-2" (gpt-image-1 may be restricted).
@@ -107,11 +97,22 @@ def generate_wedding_photo(
     """
     client = _client()
 
-    # DALL-E 2 requires a single PNG image (square, max 4MB). Convert guest to PNG square.
     guest_png = _ensure_png_square(guest_image_path)
 
-    # Write to temp file and pass as file object with explicit image/png so the API
-    # does not reject with "unsupported mimetype (application/octet-stream)".
+    base_prompt = EVENT_PROMPTS.get(event_type, EVENT_PROMPTS["wedding"])
+    event_obj = None
+    if event_id is not None:
+        event_obj = Event.objects.filter(pk=event_id).only(
+            "bride_name", "groom_name", "wedding_date", "event_type"
+        ).first()
+    sign_extra = welcome_sign_extra_prompt(event_obj)
+    bits = [base_prompt]
+    if style_fragment.strip():
+        bits.append(f"Additional direction: {style_fragment.strip()}")
+    if sign_extra:
+        bits.append(sign_extra)
+    full_prompt = "\n\n".join(bits)
+
     tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
     try:
         tmp.write(guest_png)
@@ -119,9 +120,7 @@ def generate_wedding_photo(
         with open(tmp.name, "rb") as f:
             result = client.images.edit(
                 model="dall-e-2",
-                prompt=(
-                    EVENT_PROMPT_SINGLE if include_bride else EVENT_PROMPT_SOLO
-                ).get(event_type, (EVENT_PROMPT_SINGLE if include_bride else EVENT_PROMPT_SOLO)["wedding"]),
+                prompt=full_prompt,
                 image=("guest.png", f, "image/png"),
                 size="1024x1024",
                 n=1,
@@ -144,7 +143,10 @@ def generate_wedding_photo(
     image_bytes = base64.b64decode(image_base64)
 
     media_root = getattr(settings, "MEDIA_ROOT", "media")
-    event_bucket = f"event_{event_id}" if event_id is not None else "event_unknown"
+    if not event_bucket and event_obj is not None:
+        event_bucket = event_folder_name(event_obj)
+    if not event_bucket:
+        event_bucket = "event_unknown"
     generated_dir = os.path.join(media_root, "events", event_bucket, "generated")
     os.makedirs(generated_dir, exist_ok=True)
 
@@ -160,27 +162,22 @@ def generate_wedding_photo(
 
 def generate_wedding_with_openai(
     guest_image_path,
-    bride_image_path,
     style="",
     *,
     event_id=None,
+    event_bucket=None,
     event_type="wedding",
     model=None,
     output_relative=None,
-    include_bride=True,
 ):
-    """
-    Django-facing wrapper: same signature for views.
-    """
+    """Django-facing wrapper for the legacy OpenAI path."""
     if not os.path.isfile(guest_image_path):
         raise RuntimeError(f"Guest image not found: {guest_image_path}")
-    if include_bride and (not bride_image_path or not os.path.isfile(bride_image_path)):
-        raise RuntimeError(f"Bride image not found: {bride_image_path}")
 
     return generate_wedding_photo(
         guest_image_path,
-        bride_image_path,
         event_id=event_id,
+        event_bucket=event_bucket,
         event_type=event_type,
-        include_bride=include_bride,
+        style_fragment=style or "",
     )

@@ -14,6 +14,16 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   backend:
     build: ./backend
     command: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
@@ -38,11 +48,46 @@ services:
       REPLICATE_API_TOKEN: ${REPLICATE_API_TOKEN:-}
       REPLICATE_INSTANTID_MODEL: ${REPLICATE_INSTANTID_MODEL:-}
       KEEPSAKE_USE_OPENAI_LEGACY: ${KEEPSAKE_USE_OPENAI_LEGACY:-}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      API_PUBLIC_BASE_URL: ${API_PUBLIC_BASE_URL:-}
       PUBLIC_HOST: ${PUBLIC_HOST:-}
       PUBLIC_SCHEME: ${PUBLIC_SCHEME:-http}
       PUBLIC_PORT: ${PUBLIC_PORT:-8000}
     depends_on:
       db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-worker:
+    build: ./backend
+    command: celery -A app worker -l info --concurrency=${CELERY_CONCURRENCY:-2}
+    volumes:
+      - ./backend:/app
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_DB: ${POSTGRES_DB:-wedding_kiosk}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key}
+      DEBUG: ${DEBUG:-true}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-dall-e-2}
+      OPENAI_REFINE_MODEL: ${OPENAI_REFINE_MODEL:-gpt-image-1.5}
+      OPENAI_REFINE_SIZE: ${OPENAI_REFINE_SIZE:-1536x1024}
+      REPLICATE_API_TOKEN: ${REPLICATE_API_TOKEN:-}
+      REPLICATE_INSTANTID_MODEL: ${REPLICATE_INSTANTID_MODEL:-}
+      KEEPSAKE_USE_OPENAI_LEGACY: ${KEEPSAKE_USE_OPENAI_LEGACY:-}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      API_PUBLIC_BASE_URL: ${API_PUBLIC_BASE_URL:-}
+      PUBLIC_HOST: ${PUBLIC_HOST:-}
+      PUBLIC_SCHEME: ${PUBLIC_SCHEME:-http}
+      PUBLIC_PORT: ${PUBLIC_PORT:-8000}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   frontend:

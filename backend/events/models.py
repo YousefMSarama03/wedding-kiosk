@@ -2,15 +2,20 @@ from django.db import models
 from django.utils.text import slugify
 
 
+def event_folder_name(instance) -> str:
+    """Return deterministic media folder name for an event."""
+    bride = slugify(getattr(instance, "bride_name", "") or "bride")
+    groom = slugify(getattr(instance, "groom_name", "") or "groom")
+    date_part = str(getattr(instance, "wedding_date", "") or "date")
+    return f"{bride}_{groom}_{date_part}"
+
+
 def event_bride_upload_to(instance, filename):
     """
     Organize bride/reference images under a per-event folder for easier lookup.
     """
     safe_filename = filename.split("/")[-1].split("\\")[-1]
-    bride = slugify(getattr(instance, "bride_name", "") or "bride")
-    groom = slugify(getattr(instance, "groom_name", "") or "groom")
-    date_part = str(getattr(instance, "wedding_date", "") or "date")
-    event_key = f"{bride}_{groom}_{date_part}"
+    event_key = event_folder_name(instance)
     return f"events/{event_key}/bride/{safe_filename}"
 
 

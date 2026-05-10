@@ -3,6 +3,7 @@
  * fixed layout, and warn on leave/refresh. Applied only when the kiosk route is active.
  */
 import { useEffect, useRef } from "react";
+import CornerLogos from "../ui/CornerLogos";
 
 export default function KioskMode({ children }) {
   const wakeLockRef = useRef(null);
@@ -79,5 +80,10 @@ export default function KioskMode({ children }) {
     };
   }, []);
 
-  return children;
+  return (
+    <>
+      {children}
+      <CornerLogos />
+    </>
+  );
 }

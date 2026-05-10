@@ -121,9 +121,11 @@ OPENAI_IMAGE_EDIT_MODEL = os.getenv("OPENAI_IMAGE_EDIT_MODEL", "")
 OPENAI_REFINE_MODEL = os.getenv("OPENAI_REFINE_MODEL", "gpt-image-1.5")
 OPENAI_REFINE_SIZE = os.getenv("OPENAI_REFINE_SIZE", "1536x1024")
 
-# Replicate InstantID (primary keepsake generation in photos.services.keepsake_pipeline).
+# Replicate (primary keepsake generation in photos.services.keepsake_pipeline).
 REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "")
-# Optional override, e.g. lucataco/... version hash or zsxkib/instant-id:...
+# Preferred: full model id, e.g. black-forest-labs/flux-2-pro or zsxkib/instant-id:<version>
+REPLICATE_MODEL = os.getenv("REPLICATE_MODEL", "")
+# Legacy env name (still read if REPLICATE_MODEL is empty)
 REPLICATE_INSTANTID_MODEL = os.getenv("REPLICATE_INSTANTID_MODEL", "")
 
 # If true, PhotoProcessAIView uses legacy DALL-E guest-only generation instead of keepsake+Replicate.
@@ -142,3 +144,25 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.AllowAny",
     ],
 }
+
+# Celery (optional). If CELERY_BROKER_URL is unset, AI runs synchronously in the web process.
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "").strip()
+CELERY_RESULT_BACKEND = (
+    os.getenv("CELERY_RESULT_BACKEND", "").strip() or CELERY_BROKER_URL or None
+)
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TASK_TIME_LIMIT = int(os.getenv("CELERY_TASK_TIME_LIMIT", "900"))
+CELERY_TASK_SOFT_TIME_LIMIT = int(os.getenv("CELERY_TASK_SOFT_TIME_LIMIT", "840"))
+CELERY_TASK_TRACK_STARTED = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = int(os.getenv("CELERY_WORKER_PREFETCH_MULTIPLIER", "1"))
+CELERY_TASK_ALWAYS_EAGER = os.getenv("CELERY_TASK_ALWAYS_EAGER", "").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+CELERY_TASK_EAGER_PROPAGATES = True
+
+# Base URL for QR/download links when ``request`` is unavailable (e.g. Celery). Optional if PUBLIC_HOST is set.
+API_PUBLIC_BASE_URL = os.getenv("API_PUBLIC_BASE_URL", "").strip().rstrip("/")
