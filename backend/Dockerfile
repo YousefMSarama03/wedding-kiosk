@@ -21,6 +21,9 @@ RUN mkdir -p /root/.u2net \
 
 COPY . .
 
+RUN chmod +x /app/bin/start-railway.sh
+
 EXPOSE 8000
 
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# Docker Compose overrides this with runserver. Railway: default is Gunicorn on $PORT.
+CMD ["/app/bin/start-railway.sh"]

@@ -1,0 +1,25 @@
+# Railway: set Root Directory to `frontend`, Dockerfile path `Dockerfile.railway`.
+# Set BACKEND_PROXY_URL to your backend service public URL (include https, no trailing slash required).
+
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm install
+
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+
+RUN apk add --no-cache gettext
+
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.railway.template /etc/nginx/nginx.railway.template
+COPY entrypoint-railway.sh /entrypoint-railway.sh
+RUN chmod +x /entrypoint-railway.sh
+
+EXPOSE 8080
+
+ENTRYPOINT ["/entrypoint-railway.sh"]

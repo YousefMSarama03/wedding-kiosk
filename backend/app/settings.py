@@ -5,6 +5,7 @@ Django settings for app project.
 import os
 from pathlib import Path
 
+import dj_database_url
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,13 +16,26 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "change-me-in-production")
 
 DEBUG = os.getenv("DEBUG", "true").lower() in ("true", "1", "yes")
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS = [
+    h.strip()
+    for h in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    if h.strip()
+]
+# Optional: comma-separated extra hosts (e.g. Railway service hostname without editing full ALLOWED_HOSTS).
+for _extra in os.getenv("DJANGO_EXTRA_ALLOWED_HOSTS", "").split(","):
+    _extra = _extra.strip()
+    if _extra and _extra not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_extra)
 # If set, QR download URLs use this host so phones on the same network can reach the backend.
 PUBLIC_HOST = os.getenv("PUBLIC_HOST", "").strip()
 PUBLIC_SCHEME = os.getenv("PUBLIC_SCHEME", "http").strip() or "http"
 PUBLIC_PORT = os.getenv("PUBLIC_PORT", "8000").strip()
 if PUBLIC_HOST and PUBLIC_HOST not in ALLOWED_HOSTS:
     ALLOWED_HOSTS = list(ALLOWED_HOSTS) + [PUBLIC_HOST]
+
+# Trust X-Forwarded-Proto from reverse proxy (Railway / nginx). Set when TLS terminates at the edge.
+if os.getenv("USE_X_FORWARDED_PROTO", "").lower() in ("true", "1", "yes"):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -67,17 +81,26 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "app.wsgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("POSTGRES_DB", "wedding_kiosk"),
-        "USER": os.getenv("POSTGRES_USER", "postgres"),
-        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "postgres"),
-        # Default "localhost" for running Django on the host; Docker Compose sets POSTGRES_HOST=db in the backend container.
-        "HOST": os.getenv("POSTGRES_HOST", "localhost"),
-        "PORT": os.getenv("POSTGRES_PORT", "5432"),
+# Railway/Heroku-style DATABASE_URL takes precedence over discrete POSTGRES_* vars.
+if os.getenv("DATABASE_URL", "").strip():
+    DATABASES = {
+        "default": dj_database_url.config(
+            conn_max_age=int(os.getenv("DATABASE_CONN_MAX_AGE", "600")),
+            ssl_require=os.getenv("DATABASE_SSL_REQUIRE", "").lower() in ("true", "1", "yes"),
+        )
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("POSTGRES_DB", "wedding_kiosk"),
+            "USER": os.getenv("POSTGRES_USER", "postgres"),
+            "PASSWORD": os.getenv("POSTGRES_PASSWORD", "postgres"),
+            # Docker Compose sets POSTGRES_HOST=db in the backend container.
+            "HOST": os.getenv("POSTGRES_HOST", "localhost"),
+            "PORT": os.getenv("POSTGRES_PORT", "5432"),
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -146,7 +169,11 @@ REST_FRAMEWORK = {
 }
 
 # Celery (optional). If CELERY_BROKER_URL is unset, AI runs synchronously in the web process.
-CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "").strip()
+# Railway Redis plugin sets REDIS_URL; use it when CELERY_BROKER_URL is empty.
+CELERY_BROKER_URL = (
+    os.getenv("CELERY_BROKER_URL", "").strip()
+    or os.getenv("REDIS_URL", "").strip()
+)
 CELERY_RESULT_BACKEND = (
     os.getenv("CELERY_RESULT_BACKEND", "").strip() or CELERY_BROKER_URL or None
 )

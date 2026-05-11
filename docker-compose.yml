@@ -31,6 +31,9 @@ services:
       - ./backend:/app
     ports:
       - "8000:8000"
+    # Load root .env so REPLICATE_MODEL, GPT image settings, etc. reach Django without listing each key.
+    env_file:
+      - .env
     environment:
       POSTGRES_HOST: db
       POSTGRES_DB: ${POSTGRES_DB:-wedding_kiosk}
@@ -64,6 +67,8 @@ services:
     command: celery -A app worker -l info --concurrency=${CELERY_CONCURRENCY:-2}
     volumes:
       - ./backend:/app
+    env_file:
+      - .env
     environment:
       POSTGRES_HOST: db
       POSTGRES_DB: ${POSTGRES_DB:-wedding_kiosk}
