@@ -40,7 +40,8 @@ Editorial wedding photography look: shallow depth of field, sharp focus on face.
 Create a professional, photorealistic Palestinian henna celebration portrait of this person alone.
 Preserve this person’s identity and outfit exactly as provided.
 Do not include additional people; keep the scene focused on the subject.
-Add culturally respectful festive details and warm celebration ambiance.
+Background and environment only (not on the person): apply Palestinian heritage–inspired design to the backdrop and set dressing—respectful and tasteful, not stereotypical—such as keffiyeh-pattern drapery or wall textiles behind the subject, olive branches as subtle botanical accents, and Palestinian embroidery (tatreez) on distant cushions, table linens, wall hangings, or ceremonial props. Do not alter this person’s clothing or add heritage patterns to their outfit; preserve their outfit exactly as provided.
+Warm festive henna-night atmosphere.
 Exposure/lighting: brighten the overall scene so the subject and decor are clear; soft warm lighting with realistic shadows (no harsh HDR glow).
 Color: consistent white balance; natural skin tones.
 Finish: looks like a real camera photo (no “AI” artifacts, no plastic/waxy skin, no over-sharpening).

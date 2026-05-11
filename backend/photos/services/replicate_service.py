@@ -49,7 +49,8 @@ High realism and detail; avoid distortions and extra limbs/fingers; keep faces c
 Professional, photorealistic solo portrait of the guest at a Palestinian henna celebration.
 Preserve the guest exactly as in the reference image (identity/face/hair/beard/skin tone/body) and preserve the outfit exactly (clothing and accessories).
 Do not include additional people; keep the scene focused on the guest.
-Scene: culturally respectful festive details, tasteful decor, warm celebratory ambiance.
+Background and environment only (not on the guest): style the backdrop and scene props with Palestinian heritage–inspired design—culturally respectful, tasteful, not caricature—such as keffiyeh-pattern drapery or wall textiles behind the subject, olive branches as subtle botanical accents in the set, and Palestinian embroidery (tatreez) on distant cushions, table linens, wall hangings, or ceremonial textiles. Do not change, overlay, or add heritage patterns to the guest’s clothing or accessories; preserve their outfit exactly as in the reference image.
+Warm henna-night ambiance with festive lighting and authentic-feeling decor.
 Lighting: warm event lighting with soft shadows; brighten the scene so the subject and decor are clear; match light direction; balanced exposure without muddy shadows.
 Color: consistent white balance; natural skin tones; realistic saturation.
 Camera: professional event photography, shallow depth of field, crisp focus on face.
