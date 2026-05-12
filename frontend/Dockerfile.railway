@@ -1,5 +1,6 @@
 # Railway: set Root Directory to `frontend`, Dockerfile path `Dockerfile.railway`.
-# Set BACKEND_PROXY_URL to your backend service public URL (include https, no trailing slash required).
+# Set BACKEND_PROXY_URL to your backend public origin, e.g. https://backend-production-xxxx.up.railway.app
+# (no path, no trailing slash — entrypoint strips a trailing slash if present.)
 
 FROM node:20-alpine AS builder
 

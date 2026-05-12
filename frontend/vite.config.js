@@ -5,7 +5,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: "0.0.0.0",
-    port: 3000,
+    // Railway (and similar) inject PORT; local default 3000.
+    port: Number(process.env.PORT) || 3000,
+    strictPort: false,
     proxy: {
       "/api": {
         // Use localhost when running frontend with npm run dev; backend:8000 only works inside Docker.
