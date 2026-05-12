@@ -162,6 +162,10 @@ KEEPSAKE_USE_OPENAI_LEGACY = os.getenv("KEEPSAKE_USE_OPENAI_LEGACY", "").lower()
 # Use for local/dev kiosk mode. Set in .env: KIOSK_SKIP_AUTH=true
 KIOSK_SKIP_AUTH = os.getenv("KIOSK_SKIP_AUTH", "").lower() in ("true", "1", "yes")
 
+# Optional: shared secret required for POST /api/auth/register-staff/ (admin login "create account").
+# If unset or empty, staff self-registration is disabled.
+ADMIN_SIGNUP_SECRET = os.getenv("ADMIN_SIGNUP_SECRET", "").strip()
+
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",

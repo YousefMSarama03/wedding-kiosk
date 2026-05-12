@@ -66,6 +66,16 @@ export async function loginAdmin({ username, password }) {
   return res.data;
 }
 
+/** Create staff account (server checks signup_key against ADMIN_SIGNUP_SECRET). */
+export async function registerStaffAccount({ username, password, signup_key }) {
+  const res = await api.post("/api/auth/register-staff/", {
+    username,
+    password,
+    signup_key,
+  });
+  return res.data;
+}
+
 export async function logoutAdmin() {
   await api.post("/api/auth/logout/");
 }
