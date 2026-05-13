@@ -16,15 +16,20 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN mkdir -p /root/.u2net \
     && curl -fsSL --connect-timeout 60 --retry 3 --retry-delay 5 --max-time 3600 \
         -o /root/.u2net/u2net.onnx \
-        https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx
-
+        https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx \
+    || echo "Warning: u2net weights not downloaded (will download on first use)"
 
 COPY . .
-
-# Collect static files for production
-RUN python manage.py collectstatic --noinput --clear || true
+COPY backend/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8000
 
+# Health check for Railway
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8000}/admin/login/ || exit 1
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+
 # Use Gunicorn for production, runserver for development
-CMD ["sh", "-c", "if [ \"$DEBUG\" = 'true' ]; then python manage.py runserver 0.0.0.0:${PORT:-8000}; else gunicorn app.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 4 --worker-class sync --timeout 120 --access-logfile - --error-logfile -; fi"]
+CMD ["sh", "-c", "if [ \"$DEBUG\" = 'true' ]; then python manage.py runserver 0.0.0.0:${PORT:-8000}; else gunicorn app.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 4 --worker-class sync --timeout 120 --access-logfile - --error-logfile - --max-requests 1000; fi"]
