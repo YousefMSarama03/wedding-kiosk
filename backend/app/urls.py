@@ -5,6 +5,7 @@ URL configuration for app project.
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import path, include, re_path
 from django.views.decorators.csrf import csrf_exempt
 from django.views.static import serve
@@ -13,7 +14,14 @@ from .auth_views import LoginView, MeView, LogoutView
 from .admin_views import UserListCreateView, AdminStatsView
 from .client_log_views import ClientLogView
 
+
+def health_check(request):
+    """Simple health check endpoint for deployment monitoring."""
+    return JsonResponse({"status": "ok"})
+
+
 urlpatterns = [
+    path("api/health/", health_check, name="health-check"),
     path("admin/", admin.site.urls),
     path("api/auth/login/", csrf_exempt(LoginView.as_view()), name="auth-login"),
     path("api/auth/me/", MeView.as_view(), name="auth-me"),
