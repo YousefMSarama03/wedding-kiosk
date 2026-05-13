@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { apiPath } from "../../config/apiBase.js";
 
 const KIOSK_SKIP_AUTH = import.meta.env.VITE_KIOSK_SKIP_AUTH === "true";
 
@@ -21,7 +22,7 @@ export default function LoginPage({ onLogin }) {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/login/", {
+      const res = await fetch(apiPath("/api/auth/login/"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

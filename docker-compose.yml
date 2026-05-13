@@ -1,3 +1,6 @@
+# Local development only. Production on Railway: deploy backend, worker, Redis, Postgres,
+# and frontend as separate services with env vars — do not rely on this compose file.
+
 services:
   db:
     image: postgres:16-alpine

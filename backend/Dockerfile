@@ -18,9 +18,11 @@ RUN mkdir -p /root/.u2net \
         -o /root/.u2net/u2net.onnx \
         https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx
 
-
 COPY . .
+
+RUN chmod +x /app/bin/start.sh
 
 EXPOSE 8000
 
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# Production: Gunicorn on $PORT (Railway). For local dev, docker-compose overrides this command.
+CMD ["/app/bin/start.sh"]

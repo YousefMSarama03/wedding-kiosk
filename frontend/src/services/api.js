@@ -5,8 +5,10 @@
 
 import axios from "axios";
 import { createLogger } from "./logger";
+import { getApiBase } from "../config/apiBase.js";
 
-const baseURL = ""; // relative; Vite proxy forwards /api to backend
+/** Empty string = same-origin; set VITE_API_URL for absolute API base (Railway / split domains). */
+const baseURL = getApiBase();
 const apiLogger = createLogger("API");
 
 /** Get CSRF token from cookie (Django sets csrftoken when using session/csrf). */

@@ -11,6 +11,7 @@ import { motion } from "framer-motion";
 import LoginPage from "../../components/kiosk/LoginPage";
 import WelcomeScreen from "../../components/kiosk/WelcomeScreen";
 import CameraCapture from "../../components/kiosk/CameraCapture";
+import { apiPath } from "../../config/apiBase.js";
 import { createLogger, loggedFetch } from "../../services/logger";
 import { usePerformanceLog } from "../../hooks/usePerformanceLog";
 
@@ -116,7 +117,11 @@ export default function KioskApp() {
       setEventsLoading(true);
       setEventsError("");
       try {
-        const res = await loggedFetch("/api/events/", { method: "GET" }, { component: "KioskApp", label: "GET /api/events/" });
+        const res = await loggedFetch(
+          apiPath("/api/events/"),
+          { method: "GET" },
+          { component: "KioskApp", label: "GET /api/events/" }
+        );
         if (!res.ok) {
           throw new Error(await res.text());
         }
@@ -435,7 +440,7 @@ export default function KioskApp() {
                   log.info("Photo creation started", { eventId, style: selectedStyle, useAi: useAiGeneration });
                   // 1) Upload captured image to backend (capture endpoint).
                   const captureRes = await loggedFetch(
-                    "/api/photos/capture/",
+                    apiPath("/api/photos/capture/"),
                     {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
@@ -476,7 +481,7 @@ export default function KioskApp() {
 
                   // 2) AI pipeline or guest-only copy to generated/ (returns quickly when Celery is enabled).
                   const processRes = await loggedFetch(
-                    `/api/photos/${newPhotoId}/process-ai/`,
+                    apiPath(`/api/photos/${newPhotoId}/process-ai/`),
                     {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
@@ -513,7 +518,7 @@ export default function KioskApp() {
 
                   // 3) QR uses the fixed download URL — no need to wait for AI.
                   const qrRes = await loggedFetch(
-                    `/api/photos/${newPhotoId}/qr/`,
+                    apiPath(`/api/photos/${newPhotoId}/qr/`),
                     { method: "GET" },
                     { component: "KioskApp", label: `GET /api/photos/${newPhotoId}/qr/` }
                   );

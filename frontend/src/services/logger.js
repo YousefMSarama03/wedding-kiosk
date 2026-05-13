@@ -14,6 +14,8 @@
  *   setLevel(LOG_LEVELS.INFO);  // in production, reduce noise
  */
 
+import { apiPath } from "../config/apiBase.js";
+
 // --- Log levels (higher number = more severe) ---
 export const LOG_LEVELS = {
   DEBUG: 0,
@@ -49,9 +51,25 @@ const MAX_BUFFER = 500;
 // --- Current log level (default: DEBUG in dev, INFO in prod) ---
 let currentLevel = isDev ? LOG_LEVELS.DEBUG : LOG_LEVELS.INFO;
 
-// --- Server endpoint for critical logs ---
-const CLIENT_LOGS_URL = "/api/client-logs/";
+function inferFetchCredentials(url) {
+  if (typeof window === "undefined") return "same-origin";
+  try {
+    const resolved = typeof url === "string" && url.startsWith("http")
+      ? url
+      : new URL(url, window.location.href).href;
+    const u = new URL(resolved);
+    return u.origin === window.location.origin ? "same-origin" : "include";
+  } catch {
+    return "same-origin";
+  }
+}
 
+function csrfTokenFromCookie() {
+  const m = typeof document !== "undefined" && document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/);
+  return m ? m[1] : null;
+}
+
+// --- Server endpoint for critical logs (uses VITE_API_URL when set) ---
 /**
  * Set minimum log level. Messages below this level are not printed or stored.
  * @param {number} level - One of LOG_LEVELS.DEBUG, .INFO, .WARN, .ERROR
@@ -106,14 +124,15 @@ async function sendToBackend(entry) {
   try {
     const csrfMatch = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/);
     const csrf = csrfMatch ? csrfMatch[1] : null;
-    const res = await fetch(CLIENT_LOGS_URL, {
+    const logUrl = apiPath("/api/client-logs/");
+    const res = await fetch(logUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(csrf && { "X-CSRFToken": csrf }),
       },
       body: JSON.stringify(entry),
-      credentials: "same-origin",
+      credentials: inferFetchCredentials(logUrl),
     });
     if (!res.ok) {
       // Avoid recursive logging
@@ -243,7 +262,15 @@ export async function loggedFetch(url, init = {}, options = {}) {
   logApi.debug(`Request start: ${label}`, { url, method: init.method || "GET" });
 
   try {
-    const res = await fetch(url, init);
+    const method = (init.method || "GET").toUpperCase();
+    const needsCsrf = ["POST", "PUT", "PATCH", "DELETE"].includes(method);
+    const headers = new Headers(init.headers || {});
+    if (needsCsrf && !headers.has("X-CSRFToken")) {
+      const t = csrfTokenFromCookie();
+      if (t) headers.set("X-CSRFToken", t);
+    }
+    const credentials = init.credentials ?? inferFetchCredentials(url);
+    const res = await fetch(url, { ...init, headers, credentials });
     const durationMs = Math.round(performance.now() - start);
 
     if (!res.ok) {
