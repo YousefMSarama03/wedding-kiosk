@@ -22,6 +22,9 @@ COPY . .
 
 RUN chmod +x /app/bin/start.sh
 
+# Run collectstatic during build time to speed up container startup
+RUN python manage.py collectstatic --noinput
+
 EXPOSE 8000
 
 # Production: Gunicorn on $PORT (Railway). For local dev, docker-compose overrides this command.
