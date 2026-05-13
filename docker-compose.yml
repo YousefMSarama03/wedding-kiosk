@@ -61,7 +61,7 @@ services:
 
   celery-worker:
     build: ./backend
-    command: celery -A app worker -l info --concurrency=${CELERY_CONCURRENCY:-2}
+    command: celery -A app worker -l info --concurrency=${CELERY_CONCURRENCY:-2} --uid nobody --gid nogroup
     volumes:
       - ./backend:/app
     environment:
@@ -71,6 +71,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key}
       DEBUG: ${DEBUG:-true}
+      NUMBA_DISABLE_CACHING: "1"
+      NUMBA_CACHE_DIR: /tmp/numba_cache
+      NUMBA_DISABLE_JIT: "1"
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-dall-e-2}
