@@ -20,7 +20,7 @@ RUN mkdir -p /root/.u2net \
     || echo "Warning: u2net weights not downloaded (will download on first use)"
 
 COPY . .
-COPY backend/entrypoint.sh /app/entrypoint.sh
+COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8000
