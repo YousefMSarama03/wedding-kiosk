@@ -28,9 +28,12 @@ for _extra in os.getenv("DJANGO_EXTRA_ALLOWED_HOSTS", "").split(","):
     if _extra and _extra not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(_extra)
 # Railway and similar: accept any *.up.railway.app host (hostname only, no scheme).
+# Also allow healthcheck.railway.app so Railway's healthcheck requests are not rejected.
 if os.getenv("ALLOW_RAILWAY_HOSTS", "true").lower() in ("true", "1", "yes"):
     if ".up.railway.app" not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(".up.railway.app")
+    if "healthcheck.railway.app" not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append("healthcheck.railway.app")
 
 # If set, QR download URLs use this host so phones can reach the backend.
 PUBLIC_HOST = os.getenv("PUBLIC_HOST", "").strip()
