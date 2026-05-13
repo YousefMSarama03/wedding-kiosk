@@ -5,23 +5,57 @@ Django settings for app project.
 import os
 from pathlib import Path
 
+import dj_database_url
 from dotenv import load_dotenv
 
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+def _env_csv(name: str, default: str) -> list[str]:
+    return [p.strip() for p in os.getenv(name, default).split(",") if p.strip()]
+
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "change-me-in-production")
 
 DEBUG = os.getenv("DEBUG", "true").lower() in ("true", "1", "yes")
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
-# If set, QR download URLs use this host so phones on the same network can reach the backend.
+ALLOWED_HOSTS = _env_csv("ALLOWED_HOSTS", "localhost,127.0.0.1")
+# Optional: comma-separated extra hosts.
+for _extra in os.getenv("DJANGO_EXTRA_ALLOWED_HOSTS", "").split(","):
+    _extra = _extra.strip()
+    if _extra and _extra not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_extra)
+# Railway and similar: accept any *.up.railway.app host (hostname only, no scheme).
+# Also allow healthcheck.railway.app so Railway's healthcheck requests are not rejected.
+if os.getenv("ALLOW_RAILWAY_HOSTS", "true").lower() in ("true", "1", "yes"):
+    if ".up.railway.app" not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(".up.railway.app")
+    if "healthcheck.railway.app" not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append("healthcheck.railway.app")
+
+# If set, QR download URLs use this host so phones can reach the backend.
 PUBLIC_HOST = os.getenv("PUBLIC_HOST", "").strip()
 PUBLIC_SCHEME = os.getenv("PUBLIC_SCHEME", "http").strip() or "http"
 PUBLIC_PORT = os.getenv("PUBLIC_PORT", "8000").strip()
 if PUBLIC_HOST and PUBLIC_HOST not in ALLOWED_HOSTS:
     ALLOWED_HOSTS = list(ALLOWED_HOSTS) + [PUBLIC_HOST]
+
+# Trust X-Forwarded-Proto from reverse proxy (Railway / nginx).
+if os.getenv("USE_X_FORWARDED_PROTO", "").lower() in ("true", "1", "yes"):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Secure cookies in production (HTTPS).
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+else:
+    SECURE_SSL_REDIRECT = False
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -38,6 +72,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -67,17 +102,25 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "app.wsgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("POSTGRES_DB", "wedding_kiosk"),
-        "USER": os.getenv("POSTGRES_USER", "postgres"),
-        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "postgres"),
-        # Default "localhost" for running Django on the host; Docker Compose sets POSTGRES_HOST=db in the backend container.
-        "HOST": os.getenv("POSTGRES_HOST", "localhost"),
-        "PORT": os.getenv("POSTGRES_PORT", "5432"),
+# Railway / Heroku: DATABASE_URL. Local: POSTGRES_* discrete vars.
+if os.getenv("DATABASE_URL", "").strip():
+    DATABASES = {
+        "default": dj_database_url.config(
+            conn_max_age=int(os.getenv("DATABASE_CONN_MAX_AGE", "600")),
+            ssl_require=os.getenv("DATABASE_SSL_REQUIRE", "").lower() in ("true", "1", "yes"),
+        )
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("POSTGRES_DB", "wedding_kiosk"),
+            "USER": os.getenv("POSTGRES_USER", "postgres"),
+            "PASSWORD": os.getenv("POSTGRES_PASSWORD", "postgres"),
+            "HOST": os.getenv("POSTGRES_HOST", "localhost"),
+            "PORT": os.getenv("POSTGRES_PORT", "5432"),
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -94,49 +137,59 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+# WhiteNoise for static files in production (collectstatic required at deploy).
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": (
+            "django.contrib.staticfiles.storage.StaticFilesStorage"
+            if DEBUG
+            else "whitenoise.storage.CompressedStaticFilesStorage"
+        ),
+    },
+}
+
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
-# Required for session auth when frontend and backend are on different origins (e.g. production).
+CORS_ALLOWED_ORIGINS = _env_csv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
 CORS_ALLOW_CREDENTIALS = True
 
-# Required in Django 4+ when frontend (e.g. localhost:3000) sends requests to the API (localhost:8000).
-# The browser sends Origin: http://localhost:3000; Django CSRF checks it against this list.
-CSRF_TRUSTED_ORIGINS = os.getenv(
+CSRF_TRUSTED_ORIGINS = _env_csv(
     "CSRF_TRUSTED_ORIGINS",
     "http://localhost:3000,http://127.0.0.1:3000",
-).split(",")
+)
+_FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "").strip()
+if _FRONTEND_ORIGIN:
+    if _FRONTEND_ORIGIN not in CORS_ALLOWED_ORIGINS:
+        CORS_ALLOWED_ORIGINS = list(CORS_ALLOWED_ORIGINS) + [_FRONTEND_ORIGIN]
+    if _FRONTEND_ORIGIN not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS = list(CSRF_TRUSTED_ORIGINS) + [_FRONTEND_ORIGIN]
 
 # OpenAI (used for AI wedding keepsake photo generation in photos app).
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-# Image edit model: dall-e-2 (widest access) or gpt-image-1.5 (if your account has it). Set in .env.
 OPENAI_IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "dall-e-2")
-# Default for photos.services.openai_image_edit.edit_image_openai (falls back to OPENAI_IMAGE_MODEL).
 OPENAI_IMAGE_EDIT_MODEL = os.getenv("OPENAI_IMAGE_EDIT_MODEL", "")
 
-# Merged-photo refinement (OpenAI only; optional utility — main kiosk path uses Replicate keepsake).
 OPENAI_REFINE_MODEL = os.getenv("OPENAI_REFINE_MODEL", "gpt-image-1.5")
 OPENAI_REFINE_SIZE = os.getenv("OPENAI_REFINE_SIZE", "1536x1024")
 
-# Replicate (primary keepsake generation in photos.services.keepsake_pipeline).
-REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "")
-# Preferred: full model id, e.g. black-forest-labs/flux-2-pro or zsxkib/instant-id:<version>
+REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "").strip() or os.getenv(
+    "PUBLIC_REPLICATE_API_TOKEN", ""
+).strip()
 REPLICATE_MODEL = os.getenv("REPLICATE_MODEL", "")
-# Legacy env name (still read if REPLICATE_MODEL is empty)
 REPLICATE_INSTANTID_MODEL = os.getenv("REPLICATE_INSTANTID_MODEL", "")
 
-# If true, PhotoProcessAIView uses legacy DALL-E guest-only generation instead of keepsake+Replicate.
 KEEPSAKE_USE_OPENAI_LEGACY = os.getenv("KEEPSAKE_USE_OPENAI_LEGACY", "").lower() in (
     "true",
     "1",
     "yes",
 )
 
-# When True, POST /api/auth/login/ with username "kiosk" (any password) returns success without checking Django auth.
-# Use for local/dev kiosk mode. Set in .env: KIOSK_SKIP_AUTH=true
 KIOSK_SKIP_AUTH = os.getenv("KIOSK_SKIP_AUTH", "").lower() in ("true", "1", "yes")
 
 REST_FRAMEWORK = {
@@ -145,8 +198,10 @@ REST_FRAMEWORK = {
     ],
 }
 
-# Celery (optional). If CELERY_BROKER_URL is unset, AI runs synchronously in the web process.
-CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "").strip()
+CELERY_BROKER_URL = (
+    os.getenv("CELERY_BROKER_URL", "").strip()
+    or os.getenv("REDIS_URL", "").strip()
+)
 CELERY_RESULT_BACKEND = (
     os.getenv("CELERY_RESULT_BACKEND", "").strip() or CELERY_BROKER_URL or None
 )
@@ -164,5 +219,4 @@ CELERY_TASK_ALWAYS_EAGER = os.getenv("CELERY_TASK_ALWAYS_EAGER", "").lower() in 
 )
 CELERY_TASK_EAGER_PROPAGATES = True
 
-# Base URL for QR/download links when ``request`` is unavailable (e.g. Celery). Optional if PUBLIC_HOST is set.
 API_PUBLIC_BASE_URL = os.getenv("API_PUBLIC_BASE_URL", "").strip().rstrip("/")

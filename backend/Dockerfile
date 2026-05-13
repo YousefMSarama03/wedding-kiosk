@@ -21,6 +21,10 @@ RUN mkdir -p /root/.u2net \
 
 COPY . .
 
+# Collect static files for production
+RUN python manage.py collectstatic --noinput --clear || true
+
 EXPOSE 8000
 
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# Use Gunicorn for production, runserver for development
+CMD ["sh", "-c", "if [ \"$DEBUG\" = 'true' ]; then python manage.py runserver 0.0.0.0:${PORT:-8000}; else gunicorn app.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 4 --worker-class sync --timeout 120 --access-logfile - --error-logfile -; fi"]
