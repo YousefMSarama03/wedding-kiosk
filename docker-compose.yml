@@ -26,11 +26,11 @@ services:
 
   backend:
     build: ./backend
-    command: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
+    command: sh -c "mkdir -p /app/media /tmp/.u2net /tmp/numba_cache && chmod -R a+rwx /app/media /tmp/.u2net /tmp/numba_cache && python manage.py migrate --noinput && gunicorn app.wsgi:application --bind 0.0.0.0:${PORT:-8000}"
     volumes:
       - ./backend:/app
     ports:
-      - "8000:8000"
+      - "${PORT:-8000}:${PORT:-8000}"
     environment:
       POSTGRES_HOST: db
       POSTGRES_DB: ${POSTGRES_DB:-wedding_kiosk}
@@ -38,6 +38,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key}
       DEBUG: ${DEBUG:-true}
+      U2NET_HOME: /tmp/.u2net
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
@@ -53,6 +54,7 @@ services:
       PUBLIC_HOST: ${PUBLIC_HOST:-}
       PUBLIC_SCHEME: ${PUBLIC_SCHEME:-http}
       PUBLIC_PORT: ${PUBLIC_PORT:-8000}
+      PORT: ${PORT:-8000}
     depends_on:
       db:
         condition: service_healthy
@@ -61,7 +63,7 @@ services:
 
   celery-worker:
     build: ./backend
-    command: celery -A app worker -l info --concurrency=${CELERY_CONCURRENCY:-2} --uid nobody --gid nogroup
+    command: sh -c "mkdir -p /app/media /tmp/.u2net /tmp/numba_cache && chmod -R a+rwx /app/media /tmp/.u2net /tmp/numba_cache && celery -A app worker -l info --concurrency=${CELERY_CONCURRENCY:-2} --uid nobody --gid nogroup"
     volumes:
       - ./backend:/app
     environment:
@@ -74,7 +76,10 @@ services:
       NUMBA_DISABLE_CACHING: "1"
       NUMBA_CACHE_DIR: /tmp/numba_cache
       NUMBA_DISABLE_JIT: "1"
+      U2NET_HOME: /tmp/.u2net
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-dall-e-2}
       OPENAI_REFINE_MODEL: ${OPENAI_REFINE_MODEL:-gpt-image-1.5}
@@ -87,6 +92,7 @@ services:
       PUBLIC_HOST: ${PUBLIC_HOST:-}
       PUBLIC_SCHEME: ${PUBLIC_SCHEME:-http}
       PUBLIC_PORT: ${PUBLIC_PORT:-8000}
+      PORT: ${PORT:-8000}
     depends_on:
       db:
         condition: service_healthy
@@ -96,9 +102,13 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "3000:80"
+      - "3000:3000"
+    command: npm run dev -- --host 0.0.0.0
+    environment:
+      VITE_API_URL: http://localhost:8000
     depends_on:
-      - backend
+      backend:
+        condition: service_started
 
 volumes:
   wedding_kiosk_postgres_data:

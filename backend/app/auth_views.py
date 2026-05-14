@@ -5,8 +5,8 @@ When KIOSK_SKIP_AUTH is True, login accepts username "kiosk" (any password) and 
 
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
-from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -63,6 +63,19 @@ class LoginView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+@method_decorator(ensure_csrf_cookie, name="dispatch")
+class CsrfView(APIView):
+    """
+    GET /api/auth/csrf/
+    Ensures Django sets a CSRF cookie for the frontend.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response({"detail": "CSRF cookie set."}, status=status.HTTP_200_OK)
 
 
 class MeView(APIView):

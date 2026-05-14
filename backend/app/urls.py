@@ -8,12 +8,13 @@ from django.contrib import admin
 from django.urls import path, include
 from django.views.decorators.csrf import csrf_exempt
 
-from .auth_views import LoginView, MeView, LogoutView
+from .auth_views import LoginView, MeView, LogoutView, CsrfView
 from .admin_views import UserListCreateView, AdminStatsView
 from .client_log_views import ClientLogView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("api/auth/csrf/", CsrfView.as_view(), name="auth-csrf"),
     path("api/auth/login/", csrf_exempt(LoginView.as_view()), name="auth-login"),
     path("api/auth/me/", MeView.as_view(), name="auth-me"),
     path("api/auth/logout/", csrf_exempt(LogoutView.as_view()), name="auth-logout"),

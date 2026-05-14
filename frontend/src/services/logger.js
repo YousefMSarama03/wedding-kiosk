@@ -26,6 +26,12 @@ const LEVEL_NAMES = ["DEBUG", "INFO", "WARN", "ERROR"];
 
 // --- Environment ---
 const isDev = typeof import.meta !== "undefined" && import.meta.env?.DEV === true;
+const API_BASE_URL = typeof import.meta !== "undefined" ? import.meta.env.VITE_API_URL || "http://localhost:8000" : "http://localhost:8000";
+
+function resolveApiUrl(url) {
+  if (typeof url !== "string") return url;
+  return url.startsWith("/api/") ? `${API_BASE_URL}${url}` : url;
+}
 
 // --- Console styling (works in Chrome/Edge/Firefox) ---
 const STYLES = {
@@ -106,14 +112,14 @@ async function sendToBackend(entry) {
   try {
     const csrfMatch = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/);
     const csrf = csrfMatch ? csrfMatch[1] : null;
-    const res = await fetch(CLIENT_LOGS_URL, {
+    const res = await fetch(resolveApiUrl(CLIENT_LOGS_URL), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(csrf && { "X-CSRFToken": csrf }),
       },
       body: JSON.stringify(entry),
-      credentials: "same-origin",
+      credentials: "include",
     });
     if (!res.ok) {
       // Avoid recursive logging
@@ -243,7 +249,9 @@ export async function loggedFetch(url, init = {}, options = {}) {
   logApi.debug(`Request start: ${label}`, { url, method: init.method || "GET" });
 
   try {
-    const res = await fetch(url, init);
+    const requestUrl = resolveApiUrl(url);
+    const requestInit = { credentials: "include", ...init };
+    const res = await fetch(requestUrl, requestInit);
     const durationMs = Math.round(performance.now() - start);
 
     if (!res.ok) {

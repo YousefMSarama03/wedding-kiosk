@@ -11,7 +11,6 @@ import PhotosPage from "./pages/admin/PhotosPage";
 import AIProcessingPage from "./pages/admin/AIProcessingPage";
 import GalleryPage from "./pages/admin/GalleryPage";
 import SettingsPage from "./pages/admin/SettingsPage";
-import LogViewer from "./components/dev/LogViewer";
 
 const isDev = import.meta.env?.DEV === true;
 
@@ -39,7 +38,6 @@ function App() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
-    {isDev && <LogViewer />}
     </>
   );
 }
