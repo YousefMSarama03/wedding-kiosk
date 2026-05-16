@@ -4,8 +4,44 @@ Django settings for app project.
 
 import os
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from dotenv import load_dotenv
+
+
+def bool_env(name, default="false"):
+    return os.getenv(name, default).strip().lower() in ("true", "1", "yes")
+
+
+def split_env_list(name, default=""):
+    return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
+
+
+def parse_database_url(url):
+    parsed = urlparse(url)
+    options = {}
+    query = parse_qs(parsed.query)
+    if query.get("sslmode"):
+        options["sslmode"] = query.get("sslmode", [""])[0]
+    if query.get("sslrootcert"):
+        options["sslrootcert"] = query.get("sslrootcert", [""])[0]
+    if query.get("sslcert"):
+        options["sslcert"] = query.get("sslcert", [""])[0]
+    if query.get("sslkey"):
+        options["sslkey"] = query.get("sslkey", [""])[0]
+
+    db_settings = {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": parsed.path.lstrip("/") if parsed.path else "",
+        "USER": parsed.username or "",
+        "PASSWORD": parsed.password or "",
+        "HOST": parsed.hostname or "",
+        "PORT": str(parsed.port or ""),
+    }
+    if options:
+        db_settings["OPTIONS"] = options
+    return db_settings
+
 
 load_dotenv()
 
@@ -13,9 +49,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "change-me-in-production")
 
-DEBUG = os.getenv("DEBUG", "true").lower() in ("true", "1", "yes")
+DEBUG = bool_env("DEBUG", "true")
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS = split_env_list("ALLOWED_HOSTS", "localhost,127.0.0.1")
 # If set, QR download URLs use this host so phones on the same network can reach the backend.
 PUBLIC_HOST = os.getenv("PUBLIC_HOST", "").strip()
 PUBLIC_SCHEME = os.getenv("PUBLIC_SCHEME", "http").strip() or "http"
@@ -67,17 +103,22 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "app.wsgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("POSTGRES_DB", "wedding_kiosk"),
-        "USER": os.getenv("POSTGRES_USER", "postgres"),
-        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "postgres"),
-        # Default "localhost" for running Django on the host; Docker Compose sets POSTGRES_HOST=db in the backend container.
-        "HOST": os.getenv("POSTGRES_HOST", "localhost"),
-        "PORT": os.getenv("POSTGRES_PORT", "5432"),
+if os.getenv("DATABASE_URL"):
+    DATABASES = {
+        "default": parse_database_url(os.getenv("DATABASE_URL"))
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("POSTGRES_DB", "wedding_kiosk"),
+            "USER": os.getenv("POSTGRES_USER", "postgres"),
+            "PASSWORD": os.getenv("POSTGRES_PASSWORD", "postgres"),
+            # Default "localhost" for running Django on the host; Docker Compose sets POSTGRES_HOST=db in the backend container.
+            "HOST": os.getenv("POSTGRES_HOST", "localhost"),
+            "PORT": os.getenv("POSTGRES_PORT", "5432"),
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -99,16 +140,16 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+CORS_ALLOWED_ORIGINS = split_env_list("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
 # Required for session auth when frontend and backend are on different origins (e.g. production).
 CORS_ALLOW_CREDENTIALS = True
 
 # Required in Django 4+ when frontend (e.g. localhost:3000) sends requests to the API (localhost:8000).
 # The browser sends Origin: http://localhost:3000; Django CSRF checks it against this list.
-CSRF_TRUSTED_ORIGINS = os.getenv(
+CSRF_TRUSTED_ORIGINS = split_env_list(
     "CSRF_TRUSTED_ORIGINS",
     "http://localhost:3000,http://127.0.0.1:3000",
-).split(",")
+)
 
 # OpenAI (used for AI wedding keepsake photo generation in photos app).
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -145,10 +186,17 @@ REST_FRAMEWORK = {
     ],
 }
 
-# Celery (optional). If CELERY_BROKER_URL is unset, AI runs synchronously in the web process.
-CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "").strip()
+# Celery (optional). If CELERY_BROKER_URL is unset, Railway can provide REDIS_URL for Redis-backed Celery.
+default_broker = "redis://redis:6379/0" if DEBUG else ""
+CELERY_BROKER_URL = (
+    os.getenv("CELERY_BROKER_URL", "").strip()
+    or os.getenv("REDIS_URL", "").strip()
+    or default_broker
+)
 CELERY_RESULT_BACKEND = (
-    os.getenv("CELERY_RESULT_BACKEND", "").strip() or CELERY_BROKER_URL or None
+    os.getenv("CELERY_RESULT_BACKEND", "").strip()
+    or CELERY_BROKER_URL
+    or None
 )
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"

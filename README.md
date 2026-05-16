@@ -9,9 +9,10 @@ Guests take photos at the kiosk; the backend runs a keepsake pipeline (backgroun
 
 ## Run with Docker
 
-1. Copy or create a `.env` file in the project root with at least:
+1. Copy `.env.example` to `.env` in the project root and fill in values, or configure the same environment variables in your shell.
 
    ```bash
+   # Local dev with Docker Compose uses either DATABASE_URL or POSTGRES_* vars.
    POSTGRES_DB=wedding_kiosk
    POSTGRES_USER=postgres
    POSTGRES_PASSWORD=postgres
@@ -26,6 +27,7 @@ Guests take photos at the kiosk; the backend runs a keepsake pipeline (backgroun
    PUBLIC_PORT=8000
    CORS_ALLOWED_ORIGINS=http://localhost:3000,http://192.168.31.66:3000
    CSRF_TRUSTED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://192.168.31.66:3000
+   VITE_API_URL=http://localhost:8000
    ```
 
 2. From the project root:
@@ -57,7 +59,7 @@ Guests take photos at the kiosk; the backend runs a keepsake pipeline (backgroun
 
 2. Ensure PostgreSQL is running and create a database (e.g. `wedding_kiosk`).
 
-3. Set `backend/.env` or environment variables: `POSTGRES_HOST=localhost`, `REPLICATE_API_TOKEN`, and optionally `OPENAI_API_KEY` + `KEEPSAKE_USE_OPENAI_LEGACY=true` for the legacy path, plus `PUBLIC_HOST` for QR reachability.
+3. Set `backend/.env` or environment variables: `DATABASE_URL` (preferred) or `POSTGRES_HOST=localhost`, `REPLICATE_API_TOKEN`, and optionally `OPENAI_API_KEY` + `KEEPSAKE_USE_OPENAI_LEGACY=true` for the legacy path, plus `PUBLIC_HOST` for QR reachability.
 
 4. Run migrations and start the server:
 
@@ -101,6 +103,8 @@ Before a real deployment, set these in your environment (do **not** commit secre
 | `PUBLIC_HOST` | Hostname or IP used in QR download URLs so phones can reach the backend. |
 | `PUBLIC_SCHEME` | `https` if the site is served over HTTPS. |
 | `PUBLIC_PORT` | Leave empty for default 80/443, or set the port (e.g. `8000`) if different. |
+| `REDIS_URL` | Railway Redis connection URL for Celery and caching. |
+| `VITE_API_URL` | Backend API URL exposed to the frontend in production. |
 | `REPLICATE_API_TOKEN` | Required for default generation (InstantID on Replicate). |
 | `REPLICATE_INSTANTID_MODEL` | Optional; defaults to a pinned `zsxkib/instant-id` version. Other models may need code/schema tweaks. |
 | `OPENAI_API_KEY` | Only if `KEEPSAKE_USE_OPENAI_LEGACY=true` (DALL-E guest-only path). |
