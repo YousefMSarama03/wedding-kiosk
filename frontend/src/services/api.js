@@ -6,7 +6,7 @@
 import axios from "axios";
 import { createLogger } from "./logger";
 
-const baseURL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const baseURL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:8000" : "https://YOUR_BACKEND_PUBLIC_URL.up.railway.app");
 const apiLogger = createLogger("API");
 
 /** Get CSRF token from cookie (Django sets csrftoken when using session/csrf). */
