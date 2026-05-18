@@ -47,9 +47,12 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "change-me-in-production")
+SECRET_KEY = os.getenv(
+    "DJANGO_SECRET_KEY",
+    "change-this-secret-key-in-production-8eR5DpLAkzBv1HtNq7mUfGjZ0CxQy2W",
+)
 
-DEBUG = bool_env("DEBUG", "true")
+DEBUG = bool_env("DEBUG", "false")
 
 ALLOWED_HOSTS = split_env_list("ALLOWED_HOSTS", "localhost,127.0.0.1")
 # If set, QR download URLs use this host so phones on the same network can reach the backend.
@@ -58,6 +61,17 @@ PUBLIC_SCHEME = os.getenv("PUBLIC_SCHEME", "http").strip() or "http"
 PUBLIC_PORT = os.getenv("PUBLIC_PORT", "8000").strip()
 if PUBLIC_HOST and PUBLIC_HOST not in ALLOWED_HOSTS:
     ALLOWED_HOSTS = list(ALLOWED_HOSTS) + [PUBLIC_HOST]
+
+# Production security for Railway environment.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SECURE_SSL_REDIRECT = bool_env("SECURE_SSL_REDIRECT", "true") if not DEBUG else False
+SESSION_COOKIE_SECURE = bool_env("SESSION_COOKIE_SECURE", "true")
+CSRF_COOKIE_SECURE = bool_env("CSRF_COOKIE_SECURE", "true")
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "0")) if DEBUG else int(os.getenv("SECURE_HSTS_SECONDS", "31536000"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = bool_env("SECURE_HSTS_INCLUDE_SUBDOMAINS", "true")
+SECURE_HSTS_PRELOAD = bool_env("SECURE_HSTS_PRELOAD", "true")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -140,15 +154,17 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-CORS_ALLOWED_ORIGINS = split_env_list("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
+CORS_ALLOWED_ORIGINS = split_env_list(
+    "CORS_ALLOWED_ORIGINS",
+    "https://frontend-production-e4dc9.up.railway.app,http://localhost:3000,http://127.0.0.1:3000",
+)
 # Required for session auth when frontend and backend are on different origins (e.g. production).
 CORS_ALLOW_CREDENTIALS = True
 
-# Required in Django 4+ when frontend (e.g. localhost:3000) sends requests to the API (localhost:8000).
-# The browser sends Origin: http://localhost:3000; Django CSRF checks it against this list.
+# Required in Django 4+ when frontend sends requests to the API.
 CSRF_TRUSTED_ORIGINS = split_env_list(
     "CSRF_TRUSTED_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000",
+    "https://frontend-production-e4dc9.up.railway.app,http://localhost:3000,http://127.0.0.1:3000",
 )
 
 # OpenAI (used for AI wedding keepsake photo generation in photos app).
