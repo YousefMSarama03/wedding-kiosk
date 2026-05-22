@@ -24,6 +24,10 @@ ENV NUMBA_CACHE_DIR=/tmp/numba_cache
 
 COPY . .
 
+# Create media and static directories
+RUN mkdir -p /app/media /app/staticfiles && chmod -R a+rwx /app/media /app/staticfiles
+
 EXPOSE 8000
 
-CMD ["gunicorn", "app.wsgi:application", "--bind", "0.0.0.0:8000"]
+# Default command - can be overridden by Railway
+CMD ["gunicorn", "app.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "120"]
