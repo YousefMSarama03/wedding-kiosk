@@ -24,6 +24,8 @@ ENV NUMBA_CACHE_DIR=/tmp/numba_cache
 
 COPY . .
 
+RUN chmod +x /app/entrypoint.sh
+
 EXPOSE 8000
 
-CMD ["gunicorn", "app.wsgi:application", "--bind", "0.0.0.0:8000"]
+CMD ["/app/entrypoint.sh"]
