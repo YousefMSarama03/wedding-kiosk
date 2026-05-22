@@ -27,8 +27,8 @@ const LEVEL_NAMES = ["DEBUG", "INFO", "WARN", "ERROR"];
 // --- Environment ---
 const isDev = typeof import.meta !== "undefined" && import.meta.env?.DEV === true;
 const API_BASE_URL = typeof import.meta !== "undefined"
-  ? import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:8000" : "https://YOUR_BACKEND_PUBLIC_URL.up.railway.app")
-  : "https://YOUR_BACKEND_PUBLIC_URL.up.railway.app";
+  ? import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:8000" : "https://backend-production-535b.up.railway.app")
+  : "https://backend-production-535b.up.railway.app";
 
 function resolveApiUrl(url) {
   if (typeof url !== "string") return url;

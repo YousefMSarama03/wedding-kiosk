@@ -10,7 +10,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 
 const KIOSK_SKIP_AUTH = import.meta.env.VITE_KIOSK_SKIP_AUTH === "true";
-const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:8000" : "https://YOUR_BACKEND_PUBLIC_URL.up.railway.app");
+const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:8000" : "https://backend-production-535b.up.railway.app");
 
 export default function LoginPage({ onLogin }) {
   const [username, setUsername] = useState("");
