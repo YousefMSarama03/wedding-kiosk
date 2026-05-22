@@ -5,6 +5,7 @@ Django settings for app project.
 import os
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+import logging
 
 from dotenv import load_dotenv
 
@@ -160,6 +161,23 @@ CORS_ALLOWED_ORIGINS = split_env_list(
 )
 # Required for session auth when frontend and backend are on different origins (e.g. production).
 CORS_ALLOW_CREDENTIALS = True
+
+# If the environment variable was set but empty (or split_env_list produced an empty list),
+# provide a safe fallback so preflight requests still receive CORS headers in production.
+if not CORS_ALLOWED_ORIGINS:
+    CORS_ALLOWED_ORIGINS = [
+        "https://frontend-production-e4dc9.up.railway.app",
+    ]
+
+# Log resolved CORS origins for easier debugging on startup.
+# Use both logging and print so it's visible in different deployment logs.
+logger = logging.getLogger(__name__)
+try:
+    logger.info(f"Resolved CORS_ALLOWED_ORIGINS: {CORS_ALLOWED_ORIGINS}")
+except Exception:
+    # Ensure settings import never raises because of logging issues.
+    pass
+print(f"Resolved CORS_ALLOWED_ORIGINS: {CORS_ALLOWED_ORIGINS}")
 
 # Required in Django 4+ when frontend sends requests to the API.
 CSRF_TRUSTED_ORIGINS = split_env_list(
