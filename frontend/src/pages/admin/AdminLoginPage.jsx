@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { loginAdmin, getAuthMe, ensureCsrfCookie } from "../../services/api";
+import { loginAdmin, getAuthMe, ensureCsrfCookie, createUser } from "../../services/api";
 import LoadingSpinner from "../../components/ui/LoadingSpinner";
 
 export default function AdminLoginPage() {
@@ -10,6 +10,13 @@ export default function AdminLoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [showSignup, setShowSignup] = useState(false);
+  const [signupUsername, setSignupUsername] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
+  const [signupConfirm, setSignupConfirm] = useState("");
+  const [signupIsStaff, setSignupIsStaff] = useState(false);
+  const [signupError, setSignupError] = useState("");
+  const [signupLoading, setSignupLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -41,6 +48,36 @@ export default function AdminLoginPage() {
     }
   };
 
+  const handleCreateAccount = async (e) => {
+    e.preventDefault();
+    setSignupError("");
+    if (!signupUsername || !signupPassword) {
+      setSignupError("Username and password are required.");
+      return;
+    }
+    if (signupPassword.length < 8) {
+      setSignupError("Password must be at least 8 characters.");
+      return;
+    }
+    if (signupPassword !== signupConfirm) {
+      setSignupError("Passwords do not match.");
+      return;
+    }
+    setSignupLoading(true);
+    try {
+      await createUser({ username: signupUsername, password: signupPassword, is_staff: signupIsStaff });
+      // auto-login after creating account
+      await loginAdmin({ username: signupUsername, password: signupPassword });
+      await ensureCsrfCookie().catch(() => {});
+      navigate(from, { replace: true });
+    } catch (err) {
+      const msg = err.response?.data?.error || err.message || "Could not create account.";
+      setSignupError(msg);
+    } finally {
+      setSignupLoading(false);
+    }
+  };
+
   if (checkingAuth) {
     return (
       <div className="admin-root flex min-h-screen items-center justify-center bg-black">
@@ -64,7 +101,8 @@ export default function AdminLoginPage() {
         </div>
 
         <div className="border border-white/15 bg-black p-8 shadow-[0_0_0_1px_rgba(255,255,255,0.04)_inset]">
-          <form onSubmit={handleSubmit} className="space-y-5">
+          {!showSignup ? (
+            <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label htmlFor="username" className="mb-1.5 block text-2xs font-medium uppercase tracking-[0.14em] text-white/45">
                 Username
@@ -105,9 +143,73 @@ export default function AdminLoginPage() {
             >
               {loading ? "Signing in…" : "Continue"}
             </button>
-          </form>
+            </form>
+          ) : (
+            <form onSubmit={handleCreateAccount} className="space-y-5">
+              <div>
+                <label htmlFor="signup-username" className="mb-1.5 block text-2xs font-medium uppercase tracking-[0.14em] text-white/45">Username</label>
+                <input
+                  id="signup-username"
+                  type="text"
+                  value={signupUsername}
+                  onChange={(e) => setSignupUsername(e.target.value)}
+                  autoComplete="username"
+                  required
+                  className="w-full border border-white/15 bg-black px-3 py-2.5 text-white placeholder:text-white/30 focus:border-white focus:outline-none"
+                  placeholder="Username"
+                />
+              </div>
+              <div>
+                <label htmlFor="signup-password" className="mb-1.5 block text-2xs font-medium uppercase tracking-[0.14em] text-white/45">Password</label>
+                <input
+                  id="signup-password"
+                  type="password"
+                  value={signupPassword}
+                  onChange={(e) => setSignupPassword(e.target.value)}
+                  required
+                  className="w-full border border-white/15 bg-black px-3 py-2.5 text-white placeholder:text-white/30 focus:border-white focus:outline-none"
+                  placeholder="At least 8 characters"
+                />
+              </div>
+              <div>
+                <label htmlFor="signup-confirm" className="mb-1.5 block text-2xs font-medium uppercase tracking-[0.14em] text-white/45">Confirm password</label>
+                <input
+                  id="signup-confirm"
+                  type="password"
+                  value={signupConfirm}
+                  onChange={(e) => setSignupConfirm(e.target.value)}
+                  required
+                  className="w-full border border-white/15 bg-black px-3 py-2.5 text-white placeholder:text-white/30 focus:border-white focus:outline-none"
+                  placeholder="Confirm password"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <input id="signup-is-staff" type="checkbox" checked={signupIsStaff} onChange={(e) => setSignupIsStaff(e.target.checked)} className="h-4 w-4" />
+                <label htmlFor="signup-is-staff" className="text-sm text-white/60">Create staff account</label>
+              </div>
+              {signupError && (
+                <p className="border border-white/20 bg-white/[0.04] px-3 py-2.5 text-sm text-white/90">{signupError}</p>
+              )}
+              <button
+                type="submit"
+                disabled={signupLoading}
+                className="w-full border border-white bg-white py-2.5 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:opacity-50"
+              >
+                {signupLoading ? "Creating…" : "Create account"}
+              </button>
+            </form>
+          )}
         </div>
-        <p className="mt-8 text-center">
+        <div className="mt-6 text-center">
+          <button
+            type="button"
+            onClick={() => setShowSignup((s) => !s)}
+            className="text-sm text-white/60 hover:text-white underline"
+          >
+            {showSignup ? "← Back to sign in" : "Create an account"}
+          </button>
+        </div>
+        <p className="mt-4 text-center">
           <a href="/" className="text-sm text-white/40 transition hover:text-white">
             ← Kiosk
           </a>
