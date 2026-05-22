@@ -5,7 +5,6 @@ Django settings for app project.
 import os
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
-import logging
 
 from dotenv import load_dotenv
 
@@ -55,6 +54,7 @@ SECRET_KEY = os.getenv(
 
 DEBUG = bool_env("DEBUG", "false")
 
+# Read ALLOWED_HOSTS from env; default to localhost for local dev.
 ALLOWED_HOSTS = split_env_list("ALLOWED_HOSTS", "localhost,127.0.0.1")
 # If set, QR download URLs use this host so phones on the same network can reach the backend.
 PUBLIC_HOST = os.getenv("PUBLIC_HOST", "").strip()
@@ -62,19 +62,6 @@ PUBLIC_SCHEME = os.getenv("PUBLIC_SCHEME", "http").strip() or "http"
 PUBLIC_PORT = os.getenv("PUBLIC_PORT", "8000").strip()
 if PUBLIC_HOST and PUBLIC_HOST not in ALLOWED_HOSTS:
     ALLOWED_HOSTS = list(ALLOWED_HOSTS) + [PUBLIC_HOST]
-
-# Conservative fallback: if ALLOWED_HOSTS came out empty, ensure the known Railway host
-# is present so Django doesn't return DisallowedHost (which prevents CORS headers).
-if not ALLOWED_HOSTS:
-    ALLOWED_HOSTS = ["backend-production-535b.up.railway.app"]
-
-# Log resolved ALLOWED_HOSTS for easier debugging on startup. Use logging and print
-# so it's visible across different deployment log collectors.
-try:
-    logging.getLogger(__name__).info(f"Resolved ALLOWED_HOSTS: {ALLOWED_HOSTS}")
-except Exception:
-    pass
-print(f"Resolved ALLOWED_HOSTS: {ALLOWED_HOSTS}")
 
 # Production security for Railway environment.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
@@ -168,29 +155,20 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# CORS configuration: prefer explicit origins from env. When empty in production,
+# allow Railway frontend subdomains via a safe regex so preflight succeeds.
 CORS_ALLOWED_ORIGINS = split_env_list(
     "CORS_ALLOWED_ORIGINS",
     "https://frontend-production-e4dc9.up.railway.app,http://localhost:3000,http://127.0.0.1:3000",
 )
-# Required for session auth when frontend and backend are on different origins (e.g. production).
 CORS_ALLOW_CREDENTIALS = True
 
-# If the environment variable was set but empty (or split_env_list produced an empty list),
-# provide a safe fallback so preflight requests still receive CORS headers in production.
 if not CORS_ALLOWED_ORIGINS:
-    CORS_ALLOWED_ORIGINS = [
-        "https://frontend-production-e4dc9.up.railway.app",
-    ]
-
-# Log resolved CORS origins for easier debugging on startup.
-# Use both logging and print so it's visible in different deployment logs.
-logger = logging.getLogger(__name__)
-try:
-    logger.info(f"Resolved CORS_ALLOWED_ORIGINS: {CORS_ALLOWED_ORIGINS}")
-except Exception:
-    # Ensure settings import never raises because of logging issues.
-    pass
-print(f"Resolved CORS_ALLOWED_ORIGINS: {CORS_ALLOWED_ORIGINS}")
+    # Allow frontend Railway subdomains for production deployments if explicit origins
+    # are not provided via env. This is safer than enabling `CORS_ALLOW_ALL_ORIGINS`.
+    CORS_ALLOWED_ORIGIN_REGEXES = [r"^https://.*\\.up\\.railway\\.app$"]
+else:
+    CORS_ALLOWED_ORIGIN_REGEXES = []
 
 # Required in Django 4+ when frontend sends requests to the API.
 CSRF_TRUSTED_ORIGINS = split_env_list(

@@ -11,7 +11,6 @@ from django.views.decorators.csrf import csrf_exempt
 from .auth_views import LoginView, MeView, LogoutView, CsrfView
 from .admin_views import UserListCreateView, AdminStatsView
 from .client_log_views import ClientLogView
-from .health_views import health_cors
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -24,7 +23,6 @@ urlpatterns = [
     path("api/client-logs/", ClientLogView.as_view(), name="client-logs"),
     path("api/events/", include("events.urls")),
     path("api/photos/", include("photos.urls")),
-    path("api/health-cors/", health_cors, name="health-cors"),
 ]
 
 if settings.DEBUG:
