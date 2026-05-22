@@ -63,6 +63,19 @@ PUBLIC_PORT = os.getenv("PUBLIC_PORT", "8000").strip()
 if PUBLIC_HOST and PUBLIC_HOST not in ALLOWED_HOSTS:
     ALLOWED_HOSTS = list(ALLOWED_HOSTS) + [PUBLIC_HOST]
 
+# Conservative fallback: if ALLOWED_HOSTS came out empty, ensure the known Railway host
+# is present so Django doesn't return DisallowedHost (which prevents CORS headers).
+if not ALLOWED_HOSTS:
+    ALLOWED_HOSTS = ["backend-production-535b.up.railway.app"]
+
+# Log resolved ALLOWED_HOSTS for easier debugging on startup. Use logging and print
+# so it's visible across different deployment log collectors.
+try:
+    logging.getLogger(__name__).info(f"Resolved ALLOWED_HOSTS: {ALLOWED_HOSTS}")
+except Exception:
+    pass
+print(f"Resolved ALLOWED_HOSTS: {ALLOWED_HOSTS}")
+
 # Production security for Railway environment.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = bool_env("SECURE_SSL_REDIRECT", "true") if not DEBUG else False
