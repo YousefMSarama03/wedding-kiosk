@@ -26,4 +26,8 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["gunicorn", "app.wsgi:application", "--bind", "0.0.0.0:8000"]
+# Add a small entrypoint that runs migrations and collectstatic, then starts Gunicorn
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"]

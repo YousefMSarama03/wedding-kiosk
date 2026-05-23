@@ -6,7 +6,43 @@
 import axios from "axios";
 import { createLogger } from "./logger";
 
-const baseURL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:8000" : "https://backend-production-535b.up.railway.app");
+/**
+ * Determine base URL for API:
+ * 1. Use VITE_API_URL if set (Railway passes this at build time)
+ * 2. In dev mode, use localhost:8000
+ * 3. In production, derive from current window location
+ *    (assumes frontend and backend are on same Railway domain)
+ */
+function getBaseURL() {
+  // Check for build-time or runtime environment variable
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  
+  // Development
+  if (import.meta.env.DEV) {
+    return "http://localhost:8000";
+  }
+  
+  // Production: assume backend API is at same domain but /api path
+  // E.g., if frontend is https://frontend-abc123.up.railway.app,
+  // and backend is https://backend-abc123.up.railway.app,
+  // use current window.location.origin with backend domain
+  // (This works if VITE_API_URL is not set; Railway should set it via env file or build arg)
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+  
+  // If it looks like a Railway backend domain, use it directly
+  if (hostname.includes("backend")) {
+    return `${protocol}//${hostname}${window.location.port ? ':' + window.location.port : ''}`;
+  }
+  
+  // Otherwise, try to infer the backend from frontend domain
+  // This is a fallback and should not be relied upon in production
+  return `${protocol}//${hostname}${window.location.port ? ':' + window.location.port : ''}`;
+}
+
+const baseURL = getBaseURL();
 const apiLogger = createLogger("API");
 
 /** Get CSRF token from cookie (Django sets csrftoken when using session/csrf). */

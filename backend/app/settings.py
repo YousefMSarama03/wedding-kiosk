@@ -59,17 +59,28 @@ ALLOWED_HOSTS = split_env_list("ALLOWED_HOSTS", "localhost,127.0.0.1")
 # If set, QR download URLs use this host so phones on the same network can reach the backend.
 PUBLIC_HOST = os.getenv("PUBLIC_HOST", "").strip()
 PUBLIC_SCHEME = os.getenv("PUBLIC_SCHEME", "http").strip() or "http"
-PUBLIC_PORT = os.getenv("PUBLIC_PORT", "8000").strip()
+PUBLIC_PORT = os.getenv("PUBLIC_PORT", "").strip()
+# Prefer explicit PUBLIC_PORT, otherwise fall back to the platform PORT env var (e.g. Railway)
+if not PUBLIC_PORT:
+    PUBLIC_PORT = os.getenv("PORT", "8000").strip()
 if PUBLIC_HOST and PUBLIC_HOST not in ALLOWED_HOSTS:
     ALLOWED_HOSTS = list(ALLOWED_HOSTS) + [PUBLIC_HOST]
 
 # Production security for Railway environment.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# SECURE_SSL_REDIRECT: only enable in production with proper proxy headers.
+# Railway's load balancer sets X-Forwarded-Proto: https, so this is safe.
+# Disable in DEBUG mode to avoid redirect loops in development.
 SECURE_SSL_REDIRECT = bool_env("SECURE_SSL_REDIRECT", "true") if not DEBUG else False
+
 SESSION_COOKIE_SECURE = bool_env("SESSION_COOKIE_SECURE", "true")
 CSRF_COOKIE_SECURE = bool_env("CSRF_COOKIE_SECURE", "true")
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# HSTS: be careful in production; once set, browsers enforce HTTPS for a year.
+# Only enable if you're certain your site will remain HTTPS-only.
 SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "0")) if DEBUG else int(os.getenv("SECURE_HSTS_SECONDS", "31536000"))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = bool_env("SECURE_HSTS_INCLUDE_SUBDOMAINS", "true")
 SECURE_HSTS_PRELOAD = bool_env("SECURE_HSTS_PRELOAD", "true")
@@ -88,6 +99,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
@@ -149,32 +161,50 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# CORS configuration: prefer explicit origins from env. When empty in production,
-# allow Railway frontend subdomains via a safe regex so preflight succeeds.
-CORS_ALLOWED_ORIGINS = split_env_list(
-    "CORS_ALLOWED_ORIGINS",
-    "https://frontend-production-e4dc9.up.railway.app,http://localhost:3000,http://127.0.0.1:3000",
-)
+# CORS configuration: use environment variable for explicit origins.
+# For Railway production, set CORS_ALLOWED_ORIGINS to the actual frontend domain.
+# If empty, allow same-origin (frontend on same domain) via regex for Railway deployments.
+CORS_ALLOWED_ORIGINS = split_env_list("CORS_ALLOWED_ORIGINS", "")
+
+# Add localhost for development if DEBUG is True
+if DEBUG:
+    CORS_ALLOWED_ORIGINS = list(CORS_ALLOWED_ORIGINS) + [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
 CORS_ALLOW_CREDENTIALS = True
 
+# CORS regex for Railway production: allow all Railway frontend subdomains
+# This is safe because Railway isolates deployments
 if not CORS_ALLOWED_ORIGINS:
-    # Allow frontend Railway subdomains for production deployments if explicit origins
-    # are not provided via env. This is safer than enabling `CORS_ALLOW_ALL_ORIGINS`.
-    CORS_ALLOWED_ORIGIN_REGEXES = [r"^https://.*\\.up\\.railway\\.app$"]
+    CORS_ALLOWED_ORIGIN_REGEXES = [
+        r"^https://.*\.up\.railway\.app$",  # Allow all Railway domains
+        r"^http://localhost:\d+$",  # Allow localhost for dev
+    ]
 else:
     CORS_ALLOWED_ORIGIN_REGEXES = []
 
-# Required in Django 4+ when frontend sends requests to the API.
-CSRF_TRUSTED_ORIGINS = split_env_list(
-    "CSRF_TRUSTED_ORIGINS",
-    "https://frontend-production-e4dc9.up.railway.app,http://localhost:3000,http://127.0.0.1:3000",
-)
+# CSRF_TRUSTED_ORIGINS: required in Django 4+ for cross-origin POST/PATCH/DELETE.
+# Use environment variable; add localhost for development.
+CSRF_TRUSTED_ORIGINS = split_env_list("CSRF_TRUSTED_ORIGINS", "")
+
+if DEBUG:
+    CSRF_TRUSTED_ORIGINS = list(CSRF_TRUSTED_ORIGINS) + [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
+# Add Railway subdomains if no explicit origins configured
+if not CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS = ["https://*.up.railway.app", "http://localhost:3000"]
 
 # OpenAI (used for AI wedding keepsake photo generation in photos app).
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")

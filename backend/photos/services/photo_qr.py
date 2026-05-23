@@ -5,6 +5,7 @@ Public download URL and QR materialization for a photo (works before AI finishes
 from __future__ import annotations
 
 from django.conf import settings
+import os
 
 from events.models import event_folder_name
 
@@ -34,7 +35,9 @@ def build_photo_download_absolute_url(photo_id: int, request=None) -> str:
     if base:
         return f"{base}{path}"
     if getattr(settings, "DEBUG", False):
-        return f"http://127.0.0.1:8000{path}"
+        port = getattr(settings, "PUBLIC_PORT", "") or os.getenv("PORT", "8000")
+        port_suffix = f":{port}" if port and port not in ("80", "443") else ""
+        return f"http://127.0.0.1{port_suffix}{path}"
     raise RuntimeError(
         "Set PUBLIC_HOST, API_PUBLIC_BASE_URL, or call with request to build download URLs."
     )

@@ -12,4 +12,5 @@ rembg>=2.0,<3
 onnxruntime>=1.16,<2
 celery[redis]>=5.3,<6
 gunicorn>=21.2,<22
+whitenoise>=6.0,<7
 
