@@ -24,7 +24,14 @@ export default function AdminLoginPage() {
 
   useEffect(() => {
     getAuthMe()
-      .then(() => navigate(from, { replace: true }))
+      .then((data) => {
+        // Only redirect if the authenticated user is actually staff.
+        // Non-staff users should stay on the login page so they can
+        // sign in with a staff account instead of hitting the "forbidden" wall.
+        if (data?.user?.is_staff) {
+          navigate(from, { replace: true });
+        }
+      })
       .catch(() => {})
       .finally(() => setCheckingAuth(false));
   }, [navigate, from]);
