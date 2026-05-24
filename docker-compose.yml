@@ -62,8 +62,10 @@ services:
         condition: service_healthy
 
   celery-worker:
-    build: ./backend
-    command: sh -c "mkdir -p /app/media /tmp/.u2net /tmp/numba_cache && chmod -R a+rwx /app/media /tmp/.u2net /tmp/numba_cache && celery -A app worker -l info --concurrency=${CELERY_CONCURRENCY:-2} --uid nobody --gid nogroup"
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.celery-worker
+    command: celery -A app worker -l info --concurrency=${CELERY_CONCURRENCY:-2}
     volumes:
       - ./backend:/app
     environment:
