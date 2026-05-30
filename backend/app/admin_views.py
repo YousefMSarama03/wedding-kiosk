@@ -25,6 +25,12 @@ class UserListCreateView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    def check_permissions(self, request):
+        # Allow the first admin user to be created before any authenticated users exist.
+        if request.method == "POST" and User.objects.count() == 0:
+            return
+        super().check_permissions(request)
+
     def get(self, request):
         users = User.objects.all().order_by("id")
         data = [
@@ -53,6 +59,10 @@ class UserListCreateView(APIView):
                 {"error": "A user with that username already exists."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # If this is the first user in the system, make them a staff user so the admin console is accessible.
+        if User.objects.count() == 0 and not is_staff:
+            is_staff = True
 
         User.objects.create_user(username=username, password=password, is_staff=is_staff)
         return Response({"message": "User created."}, status=status.HTTP_201_CREATED)

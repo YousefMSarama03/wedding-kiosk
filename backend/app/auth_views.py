@@ -35,7 +35,7 @@ class LoginView(APIView):
 
         if _kiosk_skip_auth() and username.lower() == "kiosk":
             return Response(
-                {"user": {"id": None, "username": "kiosk"}},
+                {"user": {"id": None, "username": "kiosk", "is_staff": False}},
                 status=status.HTTP_200_OK,
             )
 
