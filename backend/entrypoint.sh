@@ -26,6 +26,9 @@ until python manage.py migrate --noinput; do
 	sleep $DELAY
 done
 
+echo "Creating superuser if none exists..."
+python manage.py ensure_superuser
+
 echo "Collecting static files..."
 python manage.py collectstatic --noinput
 
