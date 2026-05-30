@@ -74,8 +74,10 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 # Disable in DEBUG mode to avoid redirect loops in development.
 SECURE_SSL_REDIRECT = bool_env("SECURE_SSL_REDIRECT", "true") if not DEBUG else False
 
-SESSION_COOKIE_SECURE = bool_env("SESSION_COOKIE_SECURE", "true")
-CSRF_COOKIE_SECURE = bool_env("CSRF_COOKIE_SECURE", "true")
+SESSION_COOKIE_SECURE = bool_env("SESSION_COOKIE_SECURE", "true") if not DEBUG else False
+CSRF_COOKIE_SECURE = bool_env("CSRF_COOKIE_SECURE", "true") if not DEBUG else False
+SESSION_COOKIE_SAMESITE = None
+CSRF_COOKIE_SAMESITE = None
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 

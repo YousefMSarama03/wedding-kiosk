@@ -24,7 +24,11 @@ export default function AdminLoginPage() {
 
   useEffect(() => {
     getAuthMe()
-      .then(() => navigate(from, { replace: true }))
+      .then((data) => {
+        if (data?.user?.is_staff) {
+          navigate(from, { replace: true });
+        }
+      })
       .catch(() => {})
       .finally(() => setCheckingAuth(false));
   }, [navigate, from]);
