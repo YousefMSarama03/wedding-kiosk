@@ -65,6 +65,10 @@ if not PUBLIC_PORT:
     PUBLIC_PORT = os.getenv("PORT", "8000").strip()
 if PUBLIC_HOST and PUBLIC_HOST not in ALLOWED_HOSTS:
     ALLOWED_HOSTS = list(ALLOWED_HOSTS) + [PUBLIC_HOST]
+# Always allow the known Railway backend domain so health checks and Railway routing work.
+_RAILWAY_BACKEND_DOMAIN = "backend-production-535b.up.railway.app"
+if _RAILWAY_BACKEND_DOMAIN not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS = list(ALLOWED_HOSTS) + [_RAILWAY_BACKEND_DOMAIN]
 
 # Production security for Railway environment.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
@@ -76,8 +80,10 @@ SECURE_SSL_REDIRECT = bool_env("SECURE_SSL_REDIRECT", "true") if not DEBUG else 
 
 SESSION_COOKIE_SECURE = bool_env("SESSION_COOKIE_SECURE", "true") if not DEBUG else False
 CSRF_COOKIE_SECURE = bool_env("CSRF_COOKIE_SECURE", "true") if not DEBUG else False
-SESSION_COOKIE_SAMESITE = None
-CSRF_COOKIE_SAMESITE = None
+# 'Lax' is safe for cross-site navigation and required when Secure=True in modern browsers.
+# SameSite=None without Secure is rejected by browsers and is insecure.
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 
@@ -187,8 +193,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # CORS configuration: use environment variable for explicit origins.
 # For Railway production, set CORS_ALLOWED_ORIGINS to the actual frontend domain.
-# If empty, allow same-origin (frontend on same domain) via regex for Railway deployments.
-CORS_ALLOWED_ORIGINS = split_env_list("CORS_ALLOWED_ORIGINS", "")
+# Falls back to the known Railway frontend domain when the env var is not set.
+_RAILWAY_FRONTEND_ORIGIN = "https://frontend-production-e4dc9.up.railway.app"
+CORS_ALLOWED_ORIGINS = split_env_list("CORS_ALLOWED_ORIGINS", _RAILWAY_FRONTEND_ORIGIN)
 
 # Add localhost for development if DEBUG is True
 if DEBUG:
@@ -199,19 +206,19 @@ if DEBUG:
 
 CORS_ALLOW_CREDENTIALS = True
 
-# CORS regex for Railway production: allow all Railway frontend subdomains
-# This is safe because Railway isolates deployments
-if not CORS_ALLOWED_ORIGINS:
-    CORS_ALLOWED_ORIGIN_REGEXES = [
-        r"^https://.*\.up\.railway\.app$",  # Allow all Railway domains
-        r"^http://localhost:\d+$",  # Allow localhost for dev
-    ]
-else:
-    CORS_ALLOWED_ORIGIN_REGEXES = []
+# CORS regex for Railway production: allow all Railway frontend subdomains as a safety net.
+# Explicit CORS_ALLOWED_ORIGINS above takes precedence; the regex is a fallback.
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.up\.railway\.app$",  # Allow all Railway domains
+    r"^http://localhost:\d+$",  # Allow localhost for dev
+]
 
 # CSRF_TRUSTED_ORIGINS: required in Django 4+ for cross-origin POST/PATCH/DELETE.
-# Use environment variable; add localhost for development.
-CSRF_TRUSTED_ORIGINS = split_env_list("CSRF_TRUSTED_ORIGINS", "")
+# Use environment variable; falls back to the known Railway frontend + backend domains.
+CSRF_TRUSTED_ORIGINS = split_env_list(
+    "CSRF_TRUSTED_ORIGINS",
+    f"{_RAILWAY_FRONTEND_ORIGIN},https://backend-production-535b.up.railway.app",
+)
 
 if DEBUG:
     CSRF_TRUSTED_ORIGINS = list(CSRF_TRUSTED_ORIGINS) + [
@@ -219,9 +226,9 @@ if DEBUG:
         "http://127.0.0.1:3000",
     ]
 
-# Add Railway subdomains if no explicit origins configured
-if not CSRF_TRUSTED_ORIGINS:
-    CSRF_TRUSTED_ORIGINS = ["https://*.up.railway.app", "http://localhost:3000"]
+# Ensure Railway wildcard is always present as a catch-all for preview deployments.
+if "https://*.up.railway.app" not in CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS = list(CSRF_TRUSTED_ORIGINS) + ["https://*.up.railway.app"]
 
 # OpenAI (used for AI wedding keepsake photo generation in photos app).
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
